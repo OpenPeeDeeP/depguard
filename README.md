@@ -63,7 +63,7 @@ gometalinter --linter='depguard:depguard -c path/to/config.json:PATH:LINE:COL:ME
 
 ## Golangci-lint
 
-This linter was build with
-[Golangci-lint](https://github.com/golangci/golangci-lint) in mind. I will be
-opening a pull request into that repository to include this linter in its list
-of supported linters.
+This linter was built with
+[Golangci-lint](https://github.com/golangci/golangci-lint) in mind. I have opened
+up a [Pull Request](github.com/golangci/golangci-lint/pull/47) into GolangCI-Lint
+and will hopefully get that merged in soon.
