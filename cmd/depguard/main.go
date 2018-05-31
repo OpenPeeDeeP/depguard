@@ -46,12 +46,9 @@ func parseConfigFile() (*config, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch strings.ToLower(c.Type) {
-	case "whitelist":
-		c.listType = depguard.LTWhitelist
-	case "blacklist":
-		c.listType = depguard.LTBlacklist
-	default:
+	var found bool
+	c.listType, found = depguard.StringToListType[strings.ToLower(c.Type)]
+	if !found {
 		return nil, fmt.Errorf("Unsure what list type %s is", c.Type)
 	}
 	return c, nil

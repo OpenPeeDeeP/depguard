@@ -20,6 +20,13 @@ const (
 	LTBlacklist
 )
 
+//StringToListType makes it easier to turn a string into a ListType.
+//It assumes that the string representation is lower case.
+var StringToListType = map[string]ListType{
+	"whitelist": LTWhitelist,
+	"blacklist": LTBlacklist,
+}
+
 //Issue with the package with PackageName at the Position.
 type Issue struct {
 	PackageName string
