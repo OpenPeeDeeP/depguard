@@ -38,6 +38,9 @@ type config struct {
 func parseConfigFile() (*config, error) {
 	file, err := os.Open(configFile)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return &config{}, nil
+		}
 		return nil, err
 	}
 	defer file.Close()
@@ -49,7 +52,10 @@ func parseConfigFile() (*config, error) {
 	var found bool
 	c.listType, found = depguard.StringToListType[strings.ToLower(c.Type)]
 	if !found {
-		return nil, fmt.Errorf("Unsure what list type %s is", c.Type)
+		if c.Type != "" {
+			return nil, fmt.Errorf("Unsure what list type %s is", c.Type)
+		}
+		c.listType = depguard.LTBlacklist
 	}
 	return c, nil
 }
@@ -99,6 +105,9 @@ func getConfigAndProgram() (*loader.Config, *loader.Program, error) {
 }
 
 func printIssues(c *config, issues []*depguard.Issue) {
+	if len(issues) == 0 {
+		return
+	}
 	temp := template.Must(template.New("issues").Parse(`{{ .Position.Filename }}:{{ .Position.Line }}:{{ .Position.Column }}:{{ .PackageName }}`))
 	buf := new(bytes.Buffer)
 	for _, issue := range issues {

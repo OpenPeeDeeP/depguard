@@ -30,8 +30,10 @@ The following is an example configuration file.
 ```
 
 - `type` can be either `whitelist` or `blacklist`. This check is case insensitive.
+If not specified the default is `blacklist`.
 - `packages` is a list of packages for the list type specified.
 - Set `includeGoRoot` to true if you want to check the list against standard lib.
+If not specified the default is false.
 
 ## Gometalinter
 

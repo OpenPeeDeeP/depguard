@@ -14,10 +14,10 @@ import (
 type ListType int
 
 const (
-	//LTWhitelist states the list given is a whitelist. (default)
-	LTWhitelist ListType = iota
-	//LTBlacklist states the list given is a blacklist.
-	LTBlacklist
+	//LTBlacklist states the list given is a blacklist. (default)
+	LTBlacklist ListType = iota
+	//LTWhitelist states the list given is a whitelist.
+	LTWhitelist
 )
 
 //StringToListType makes it easier to turn a string into a ListType.
@@ -45,9 +45,15 @@ type Depguard struct {
 //Run checks for dependencies given the program and validates them against
 //Packages.
 func (dg *Depguard) Run(config *loader.Config, prog *loader.Program) ([]*Issue, error) {
+	//Shortcut execution on an empty blacklist as that means every package is allowed
+	if dg.ListType == LTBlacklist && len(dg.Packages) == 0 {
+		return nil, nil
+	}
+
 	if err := dg.initialize(config, prog); err != nil {
 		return nil, err
 	}
+
 	directImports, err := dg.createImportMap(prog)
 	if err != nil {
 		return nil, err
@@ -83,14 +89,7 @@ func (dg *Depguard) initialize(config *loader.Config, prog *loader.Program) erro
 		dg.buildCtx = &build.Default
 	}
 
-	//If no packages passed in and we are a white list, default to the initial
-	//imported packages
-	if dg.Packages == nil && dg.ListType == 0 {
-		dg.Packages = make([]string, 0, len(prog.Imported))
-		for _, pkg := range prog.Imported {
-			dg.Packages = append(dg.Packages, pkg.Pkg.Path())
-		}
-	}
+	//Sort the packages so we can have a faster search in the array
 	sort.Strings(dg.Packages)
 	return nil
 }
@@ -98,7 +97,7 @@ func (dg *Depguard) initialize(config *loader.Config, prog *loader.Program) erro
 func (dg *Depguard) createImportMap(prog *loader.Program) (map[string][]token.Position, error) {
 	importMap := make(map[string][]token.Position)
 	//For the directly imported packages
-	for _, imported := range prog.Imported {
+	for _, imported := range prog.InitialPackages() {
 		//Go through their files
 		for _, file := range imported.Files {
 			//And populate a map of all direct imports and their positions
