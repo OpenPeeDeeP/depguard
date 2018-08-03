@@ -39,6 +39,9 @@ func parseConfigFile() (*config, error) {
 	file, err := os.Open(configFile)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if configFile != ".depguard.json" {
+				return nil, err
+			}
 			return &config{}, nil
 		}
 		return nil, err
