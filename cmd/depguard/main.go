@@ -32,6 +32,7 @@ type config struct {
 	Type          string   `json:"type"`
 	Packages      []string `json:"packages"`
 	IncludeGoRoot bool     `json:"includeGoRoot"`
+	InTests       []string `json:"inTests"`
 	listType      depguard.ListType
 }
 
@@ -69,7 +70,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	conf, prog, err := getConfigAndProgram()
+	conf, prog, err := getConfigAndProgram(config)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -77,6 +78,7 @@ func main() {
 		Packages:      config.Packages,
 		IncludeGoRoot: config.IncludeGoRoot,
 		ListType:      config.listType,
+		TestPackages:  config.InTests,
 	}
 	issues, err := dg.Run(conf, prog)
 	if err != nil {
@@ -85,7 +87,7 @@ func main() {
 	printIssues(config, issues)
 }
 
-func getConfigAndProgram() (*loader.Config, *loader.Program, error) {
+func getConfigAndProgram(depguardConf *config) (*loader.Config, *loader.Program, error) {
 	paths := gotool.ImportPaths(flag.Args())
 	conf := new(loader.Config)
 	conf.ParserMode = parser.ImportsOnly
@@ -93,7 +95,7 @@ func getConfigAndProgram() (*loader.Config, *loader.Program, error) {
 	conf.TypeChecker = types.Config{
 		Error: eatErrors,
 	}
-	rest, err := conf.FromArgs(paths, false)
+	rest, err := conf.FromArgs(paths, len(depguardConf.InTests) > 0)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -124,5 +126,5 @@ func printIssues(c *config, issues []*depguard.Issue) {
 	}
 }
 
-//Since I am allowing errors to happen, I don't want them to print to screen.
+// Since I am allowing errors to happen, I don't want them to print to screen.
 func eatErrors(err error) {}
