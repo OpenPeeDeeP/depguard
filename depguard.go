@@ -1,7 +1,6 @@
 package depguard
 
 import (
-	"go/build"
 	"go/token"
 	"os"
 	"sort"
@@ -47,8 +46,8 @@ type Depguard struct {
 	prefixTestPackages []string
 	globTestPackages   []glob.Glob
 
-	buildCtx *build.Context
-	cwd      string
+	rootChecker *RootChecker
+	cwd         string
 }
 
 // Run checks for dependencies given the program and validates them against
@@ -62,7 +61,6 @@ func (dg *Depguard) Run(config *loader.Config, prog *loader.Program) ([]*Issue, 
 	if err := dg.initialize(config, prog); err != nil {
 		return nil, err
 	}
-
 	directImports, err := dg.createImportMap(prog)
 	if err != nil {
 		return nil, err
@@ -98,11 +96,7 @@ func (dg *Depguard) initialize(config *loader.Config, prog *loader.Program) erro
 		}
 	}
 
-	// Use the &build.Default if one is not specified
-	dg.buildCtx = config.Build
-	if dg.buildCtx == nil {
-		dg.buildCtx = &build.Default
-	}
+	dg.rootChecker = NewRootChecker(config.Build)
 
 	// parse ordinary guarded packages
 	for _, pkg := range dg.Packages {
@@ -150,11 +144,11 @@ func (dg *Depguard) createImportMap(prog *loader.Program) (map[string][]token.Po
 			for _, fileImport := range file.Imports {
 				fileImportPath := cleanBasicLitString(fileImport.Path.Value)
 				if !dg.IncludeGoRoot {
-					pkg, err := dg.buildCtx.Import(fileImportPath, dg.cwd, 0)
+					isRoot, err := dg.rootChecker.IsRoot(fileImportPath, dg.cwd)
 					if err != nil {
 						return nil, err
 					}
-					if pkg.Goroot {
+					if isRoot {
 						continue
 					}
 				}
