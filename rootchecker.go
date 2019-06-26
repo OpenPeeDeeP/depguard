@@ -44,7 +44,7 @@ func (rc *RootChecker) IsRoot(path, sourceDir string) (bool, error) {
 // calcIsRoot performs the call to the build context to check if
 // the import path points to a root package.
 func (rc *RootChecker) calcIsRoot(path, sourceDir string) (bool, error) {
-	pkg, err := rc.buildCtx.Import(path, sourceDir, 0)
+	pkg, err := rc.buildCtx.Import(path, sourceDir, build.FindOnly)
 	if err != nil {
 		return false, err
 	}
