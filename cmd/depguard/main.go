@@ -29,11 +29,12 @@ func init() {
 }
 
 type config struct {
-	Type          string   `json:"type"`
-	Packages      []string `json:"packages"`
-	IncludeGoRoot bool     `json:"includeGoRoot"`
-	InTests       []string `json:"inTests"`
-	listType      depguard.ListType
+	Type                      string            `json:"type"`
+	Packages                  []string          `json:"packages"`
+	PackagesWithErrorMessages map[string]string `json:"packagesWithErrorMessages"`
+	IncludeGoRoot             bool              `json:"includeGoRoot"`
+	InTests                   []string          `json:"inTests"`
+	listType                  depguard.ListType
 }
 
 func parseConfigFile() (*config, error) {
@@ -61,6 +62,24 @@ func parseConfigFile() (*config, error) {
 		}
 		c.listType = depguard.LTBlacklist
 	}
+
+	if c.listType == depguard.LTBlacklist {
+		// add any packages that are only in PackgesWithErrorMessages
+		// to the packages list to be blacklisted
+		for _, pkg := range c.Packages {
+			if _, ok := c.PackagesWithErrorMessages[pkg]; !ok {
+				c.PackagesWithErrorMessages[pkg] = ""
+			}
+		}
+
+		// recreate the packages list so that it has all packages
+		c.Packages = make([]string, 0, len(c.PackagesWithErrorMessages))
+
+		for pkg := range c.PackagesWithErrorMessages {
+			c.Packages = append(c.Packages, pkg)
+		}
+	}
+
 	return c, nil
 }
 
@@ -115,13 +134,21 @@ func printIssues(c *config, issues []*depguard.Issue) {
 	}
 	temp := template.Must(template.New("issues").Parse(`{{ .Position.Filename }}:{{ .Position.Line }}:{{ .Position.Column }}:{{ .PackageName }}`))
 	buf := new(bytes.Buffer)
+	var str strings.Builder
 	for _, issue := range issues {
 		temp.Execute(buf, issue)
 		if c.listType == depguard.LTWhitelist {
-			fmt.Println(buf.String() + whitelistMsg)
+			str.WriteString(buf.String() + whitelistMsg)
 		} else {
-			fmt.Println(buf.String() + blacklistMsg)
+			str.WriteString(buf.String() + blacklistMsg)
 		}
+
+		// check to see if an additional error message was supplied for the package
+		if msg, ok := c.PackagesWithErrorMessages[issue.PackageName]; ok && msg != "" {
+			str.WriteString(": " + msg)
+		}
+		fmt.Println(str.String())
+		str.Reset()
 		buf.Reset()
 	}
 }
