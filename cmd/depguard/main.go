@@ -41,6 +41,7 @@ type config struct {
 	Packages                  []string          `json:"packages"`
 	PackagesWithErrorMessages map[string]string `json:"packagesWithErrorMessages"`
 	IncludeGoRoot             bool              `json:"includeGoRoot"`
+	IncludeGoStdLib           bool              `json:"includeGoStdLib"`
 	InTests                   []string          `json:"inTests"`
 	listType                  depguard.ListType
 }
@@ -62,6 +63,9 @@ func parseConfigFile() (*config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	c.IncludeGoRoot = c.IncludeGoRoot || c.IncludeGoStdLib
+
 	var found bool
 	c.listType, found = depguard.StringToListType[strings.ToLower(c.Type)]
 	if !found {
@@ -93,7 +97,6 @@ func parseConfigFile() (*config, error) {
 
 func main() {
 	flag.Parse()
-
 	if cpuProfile != "" {
 		f, err := os.Create(cpuProfile)
 		if err != nil {
