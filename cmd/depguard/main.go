@@ -9,6 +9,8 @@ import (
 	"go/types"
 	"log"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"strings"
 	"text/template"
 
@@ -22,10 +24,16 @@ const (
 	blacklistMsg = " was in the blacklist"
 )
 
-var configFile string
+var (
+	configFile string
+	cpuProfile string
+	memProfile string
+)
 
 func init() {
 	flag.StringVar(&configFile, "c", ".depguard.json", "Location of the config file")
+	flag.StringVar(&cpuProfile, "cpu", "", "write cpu profile to `file`")
+	flag.StringVar(&memProfile, "mem", "", "write memory profile to `file`")
 }
 
 type config struct {
@@ -63,7 +71,7 @@ func parseConfigFile() (*config, error) {
 		c.listType = depguard.LTBlacklist
 	}
 
-	if c.listType == depguard.LTBlacklist {
+	if c.listType == depguard.LTBlacklist && c.PackagesWithErrorMessages != nil {
 		// add any packages that are only in PackgesWithErrorMessages
 		// to the packages list to be blacklisted
 		for _, pkg := range c.Packages {
@@ -85,6 +93,19 @@ func parseConfigFile() (*config, error) {
 
 func main() {
 	flag.Parse()
+
+	if cpuProfile != "" {
+		f, err := os.Create(cpuProfile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
 	config, err := parseConfigFile()
 	if err != nil {
 		log.Fatalln(err)
@@ -104,6 +125,18 @@ func main() {
 		log.Fatalln(err)
 	}
 	printIssues(config, issues)
+
+	if memProfile != "" {
+		f, err := os.Create(memProfile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		defer f.Close()
+		runtime.GC() // get up-to-date statistics
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal("could not write memory profile: ", err)
+		}
+	}
 }
 
 func getConfigAndProgram(depguardConf *config) (*loader.Config, *loader.Program, error) {
