@@ -1,0 +1,21 @@
+{
+    "allowMissing": false,
+    "constraints": {
+        "**" : {
+            "priority": 99,
+            "type": "whitelist",
+            "packages": [
+                "golang.org/x/tools/go/loader",
+                "github.com/gobwas/glob"
+            ]
+        },
+        "./cmd/**": {
+            "type": "whitelist",
+            "packages": [
+                "github.com/OpenPeeDeeP/depguard",
+                "github.com/kisielk/gotool",
+                "golang.org/x/tools/go/loader"
+            ]
+        }
+    }
+}
