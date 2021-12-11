@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	whitelistMsg = " was not in the whitelist"
-	blacklistMsg = " was in the blacklist"
+	whitelistMsg = " was not in the allowlist"
+	blacklistMsg = " was in the denylist"
 )
 
 var (

@@ -1,7 +1,7 @@
 # Depguard
 
 Go linter that checks package imports are in a list of acceptable packages. It
-supports a white list and black list option and can do prefix or glob matching.
+can also deny a list of packages and can do prefix or glob matching.
 This allows you to allow imports from a whole organization or only
 allow specific packages within a repository. It is recommended to use prefix
 matching as it is faster than glob matching. The fewer glob matches the better.
@@ -24,7 +24,7 @@ The following is an example configuration file.
 
 ```json
 {
-  "type": "whitelist",
+  "type": "allowlist",
   "packages": ["github.com/OpenPeeDeeP/depguard"],
   "packageErrorMessages": {
     "github.com/OpenPeeDeeP/depguards": "Please use \"github.com/OpenPeeDeeP/depguard\","
@@ -34,12 +34,13 @@ The following is an example configuration file.
 }
 ```
 
-- `type` can be either `whitelist` or `blacklist`. This check is case insensitive.
-  If not specified the default is `blacklist`.
+- `type` can be either `allowlist` or `denylist`. This check is case insensitive.
+  If not specified the default is `denylist`. The values `whitelist` and `blacklist`
+  are also accepted for backwards compatibility.
 - `packages` is a list of packages for the list type specified.
 - `packageErrorMessages` is a mapping from packages to the error message to display
 - `inTests` is a list of packages allowed/disallowed only in test files.
-- Set `includeGoStdLib` (`includeGoRoot` for backwards compatability) to true if you want to check the list against standard lib.
+- Set `includeGoStdLib` (`includeGoRoot` for backwards compatibility) to true if you want to check the list against standard lib.
   If not specified the default is false.
 
 ## Gometalinter
@@ -73,5 +74,5 @@ gometalinter --linter='depguard:depguard -c path/to/config.json:PATH:LINE:COL:ME
 ## Golangci-lint
 
 This linter was built with
-[Golangci-lint](https://github.com/golangci/golangci-lint) in mind. It is compatable
+[Golangci-lint](https://github.com/golangci/golangci-lint) in mind. It is compatible
 and read their docs to see how to implement all their linters, including this one.
