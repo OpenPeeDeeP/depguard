@@ -25,6 +25,8 @@ const (
 // StringToListType makes it easier to turn a string into a ListType.
 // It assumes that the string representation is lower case.
 var StringToListType = map[string]ListType{
+	"allowlist": LTWhitelist,
+	"denylist":  LTBlacklist,
 	"whitelist": LTWhitelist,
 	"blacklist": LTBlacklist,
 }
