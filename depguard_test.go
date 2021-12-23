@@ -106,6 +106,31 @@ func TestMixedTestFileAllowList(t *testing.T) {
 	require.Equal(t, "file_test.go", issues[0].Position.Filename)
 }
 
+func TestExcludeGoRootAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType: depguard.LTWhitelist,
+		Packages: []string{"allow"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "go/ast"))
+	require.NoError(t, err)
+	require.Len(t, issues, 0)
+}
+
+func TestIncludeGoRootAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:      depguard.LTWhitelist,
+		Packages:      []string{"allow"},
+		IncludeGoRoot: true,
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "go/ast"))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "go/ast", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
+}
+
 // ========== DenyList ==========
 
 func TestBasicDenyList(t *testing.T) {
@@ -226,6 +251,31 @@ func TestMixedTestFileDenyList(t *testing.T) {
 	require.Len(t, issues, 1)
 	require.Equal(t, "denytest/a", issues[0].PackageName)
 	require.Equal(t, "file_test.go", issues[0].Position.Filename)
+}
+
+func TestExcludeGoRootDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType: depguard.LTBlacklist,
+		Packages: []string{"go/ast"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "go/ast"))
+	require.NoError(t, err)
+	require.Len(t, issues, 0)
+}
+
+func TestIncludeGoRootDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:      depguard.LTBlacklist,
+		Packages:      []string{"go/ast"},
+		IncludeGoRoot: true,
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "go/ast"))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "go/ast", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
 }
 
 func newLoadConfig() *loader.Config {
