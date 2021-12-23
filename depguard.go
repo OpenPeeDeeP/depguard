@@ -50,6 +50,10 @@ type Depguard struct {
 	prefixTestPackages []string
 	globTestPackages   []glob.Glob
 
+	IgnoreFileRules       []string
+	prefixIgnoreFileRules []string
+	globIgnoreFileRules   []glob.Glob
+
 	prefixRoot []string
 }
 
@@ -75,6 +79,10 @@ func (dg *Depguard) Run(config *loader.Config, prog *loader.Program) ([]*Issue, 
 			prefixList, globList := dg.prefixPackages, dg.globPackages
 			if len(dg.TestPackages) > 0 && strings.Index(pos.Filename, "_test.go") != -1 {
 				prefixList, globList = dg.prefixTestPackages, dg.globTestPackages
+			}
+
+			if strInList(pos.Filename, dg.prefixIgnoreFileRules, dg.globIgnoreFileRules) {
+				continue
 			}
 
 			if dg.flagIt(pkg, prefixList, globList) {
@@ -121,6 +129,22 @@ func (dg *Depguard) initialize(config *loader.Config, prog *loader.Program) erro
 	// Sort the test packages so we can have a faster search in the array
 	sort.Strings(dg.prefixTestPackages)
 
+	// parse ignore file rules
+	for _, rule := range dg.IgnoreFileRules {
+		if strings.ContainsAny(rule, "!?*[]{}") {
+			g, err := glob.Compile(rule, '/')
+			if err != nil {
+				return err
+			}
+			dg.globIgnoreFileRules = append(dg.globIgnoreFileRules, g)
+		} else {
+			dg.prefixIgnoreFileRules = append(dg.prefixIgnoreFileRules, rule)
+		}
+	}
+
+	// Sort the rules so we can have a faster search in the array
+	sort.Strings(dg.prefixIgnoreFileRules)
+
 	if !dg.IncludeGoRoot {
 		var err error
 		dg.prefixRoot, err = listRootPrefixs(config.Build)
@@ -160,30 +184,30 @@ func (dg *Depguard) createImportMap(prog *loader.Program) (map[string][]token.Po
 	return importMap, nil
 }
 
-func pkgInList(pkg string, prefixList []string, globList []glob.Glob) bool {
-	if pkgInPrefixList(pkg, prefixList) {
+func strInList(str string, prefixList []string, globList []glob.Glob) bool {
+	if strInPrefixList(str, prefixList) {
 		return true
 	}
-	return pkgInGlobList(pkg, globList)
+	return strInGlobList(str, globList)
 }
 
-func pkgInPrefixList(pkg string, prefixList []string) bool {
-	// Idx represents where in the package slice the passed in package would go
+func strInPrefixList(str string, prefixList []string) bool {
+	// Idx represents where in the prefix slice the passed in string would go
 	// when sorted. -1 Just means that it would be at the very front of the slice.
 	idx := sort.Search(len(prefixList), func(i int) bool {
-		return prefixList[i] > pkg
+		return prefixList[i] > str
 	}) - 1
-	// This means that the package passed in has no way to be prefixed by anything
-	// in the package list as it is already smaller then everything
+	// This means that the string passed in has no way to be prefixed by anything
+	// in the prefix list as it is already smaller then everything
 	if idx == -1 {
 		return false
 	}
-	return strings.HasPrefix(pkg, prefixList[idx])
+	return strings.HasPrefix(str, prefixList[idx])
 }
 
-func pkgInGlobList(pkg string, globList []glob.Glob) bool {
+func strInGlobList(str string, globList []glob.Glob) bool {
 	for _, g := range globList {
-		if g.Match(pkg) {
+		if g.Match(str) {
 			return true
 		}
 	}
@@ -194,7 +218,7 @@ func pkgInGlobList(pkg string, globList []glob.Glob) bool {
 //   y   |           |     x
 //   n   |     x     |
 func (dg *Depguard) flagIt(pkg string, prefixList []string, globList []glob.Glob) bool {
-	return pkgInList(pkg, prefixList, globList) == (dg.ListType == LTBlacklist)
+	return strInList(pkg, prefixList, globList) == (dg.ListType == LTBlacklist)
 }
 
 func cleanBasicLitString(value string) string {
