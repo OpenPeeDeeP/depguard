@@ -3,6 +3,8 @@ package depguard_test
 import (
 	"go/ast"
 	"go/token"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/OpenPeeDeeP/depguard"
@@ -40,7 +42,7 @@ func TestGlobAllowList(t *testing.T) {
 		Packages: []string{"allow/**/pkg"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "allow/a/pkg", "allow/a/b/pkg"))
+	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "allow/a/pkg", "allow/b/c/pkg"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -86,7 +88,7 @@ func TestGlobTestFileAllowList(t *testing.T) {
 		TestPackages: []string{"allowtest/**/pkg"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a/pkg", "allowtest/a/b/pkg"))
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a/pkg", "allowtest/b/c/pkg"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -128,6 +130,7 @@ func TestPrefixDenyList(t *testing.T) {
 	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "deny/a", "deny/b"))
 	require.NoError(t, err)
 	require.Len(t, issues, 2)
+	sortIssues(issues)
 	require.Equal(t, "deny/a", issues[0].PackageName)
 	require.Equal(t, "file.go", issues[0].Position.Filename)
 	require.Equal(t, "deny/b", issues[1].PackageName)
@@ -140,12 +143,13 @@ func TestGlobDenyList(t *testing.T) {
 		Packages: []string{"deny/**/pkg"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "deny/a/pkg", "deny/a/b/pkg"))
+	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "deny/a/pkg", "deny/b/c/pkg"))
 	require.NoError(t, err)
 	require.Len(t, issues, 2)
+	sortIssues(issues)
 	require.Equal(t, "deny/a/pkg", issues[0].PackageName)
 	require.Equal(t, "file.go", issues[0].Position.Filename)
-	require.Equal(t, "deny/a/b/pkg", issues[1].PackageName)
+	require.Equal(t, "deny/b/c/pkg", issues[1].PackageName)
 	require.Equal(t, "file.go", issues[1].Position.Filename)
 }
 
@@ -186,6 +190,7 @@ func TestPrefixTestFileDenyList(t *testing.T) {
 	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "denytest/a", "denytest/b"))
 	require.NoError(t, err)
 	require.Len(t, issues, 2)
+	sortIssues(issues)
 	require.Equal(t, "denytest/a", issues[0].PackageName)
 	require.Equal(t, "file_test.go", issues[0].Position.Filename)
 	require.Equal(t, "denytest/b", issues[1].PackageName)
@@ -199,12 +204,13 @@ func TestGlobTestFileDenyList(t *testing.T) {
 		TestPackages: []string{"denytest/**/pkg"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "denytest/a/pkg", "denytest/a/b/pkg"))
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "denytest/a/pkg", "denytest/b/c/pkg"))
 	require.NoError(t, err)
 	require.Len(t, issues, 2)
+	sortIssues(issues)
 	require.Equal(t, "denytest/a/pkg", issues[0].PackageName)
 	require.Equal(t, "file_test.go", issues[0].Position.Filename)
-	require.Equal(t, "denytest/a/b/pkg", issues[1].PackageName)
+	require.Equal(t, "denytest/b/c/pkg", issues[1].PackageName)
 	require.Equal(t, "file_test.go", issues[1].Position.Filename)
 }
 
@@ -263,4 +269,10 @@ func newProgram(fileName string, packagePaths ...string) *loader.Program {
 		},
 		Fset: progFileSet,
 	}
+}
+
+func sortIssues(issues []*depguard.Issue) {
+	sort.Slice(issues, func(i, j int) bool {
+		return strings.Compare(issues[i].PackageName, issues[j].PackageName) < 0
+	})
 }
