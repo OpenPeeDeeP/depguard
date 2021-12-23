@@ -20,7 +20,7 @@ func TestBasicAllowList(t *testing.T) {
 		Packages: []string{"allow"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "allow"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "allow"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -31,7 +31,7 @@ func TestPrefixAllowList(t *testing.T) {
 		Packages: []string{"allow"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "allow/a", "allow/b"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "allow/a", "allow/b"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -42,7 +42,7 @@ func TestGlobAllowList(t *testing.T) {
 		Packages: []string{"allow/**/pkg"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "allow/a/pkg", "allow/b/c/pkg"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "allow/a/pkg", "allow/b/c/pkg"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -53,7 +53,7 @@ func TestMixedAllowList(t *testing.T) {
 		Packages: []string{"allow"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "allow/a", "deny/a"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "allow/a", "deny/a"))
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 	require.Equal(t, "deny/a", issues[0].PackageName)
@@ -66,7 +66,7 @@ func TestBasicTestFileAllowList(t *testing.T) {
 		TestPackages: []string{"allowtest"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file_test.go", "allowtest"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -77,7 +77,7 @@ func TestPrefixTestFileAllowList(t *testing.T) {
 		TestPackages: []string{"allowtest"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a", "allowtest/b"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file_test.go", "allowtest/a", "allowtest/b"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -88,7 +88,7 @@ func TestGlobTestFileAllowList(t *testing.T) {
 		TestPackages: []string{"allowtest/**/pkg"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a/pkg", "allowtest/b/c/pkg"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file_test.go", "allowtest/a/pkg", "allowtest/b/c/pkg"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -99,7 +99,7 @@ func TestMixedTestFileAllowList(t *testing.T) {
 		TestPackages: []string{"allowtest"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a", "denytest/a"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file_test.go", "allowtest/a", "denytest/a"))
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 	require.Equal(t, "denytest/a", issues[0].PackageName)
@@ -112,7 +112,7 @@ func TestExcludeGoRootAllowList(t *testing.T) {
 		Packages: []string{"allow"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "go/ast"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "go/ast"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -124,7 +124,7 @@ func TestIncludeGoRootAllowList(t *testing.T) {
 		IncludeGoRoot: true,
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "go/ast"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "go/ast"))
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 	require.Equal(t, "go/ast", issues[0].PackageName)
@@ -139,7 +139,7 @@ func TestBasicDenyList(t *testing.T) {
 		Packages: []string{"deny"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "deny"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "deny"))
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 	require.Equal(t, "deny", issues[0].PackageName)
@@ -152,7 +152,7 @@ func TestPrefixDenyList(t *testing.T) {
 		Packages: []string{"deny"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "deny/a", "deny/b"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "deny/a", "deny/b"))
 	require.NoError(t, err)
 	require.Len(t, issues, 2)
 	sortIssues(issues)
@@ -168,7 +168,7 @@ func TestGlobDenyList(t *testing.T) {
 		Packages: []string{"deny/**/pkg"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "deny/a/pkg", "deny/b/c/pkg"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "deny/a/pkg", "deny/b/c/pkg"))
 	require.NoError(t, err)
 	require.Len(t, issues, 2)
 	sortIssues(issues)
@@ -184,7 +184,7 @@ func TestMixedDenyList(t *testing.T) {
 		Packages: []string{"deny"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "allow/a", "deny/a"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "allow/a", "deny/a"))
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 	require.Equal(t, "deny/a", issues[0].PackageName)
@@ -198,7 +198,7 @@ func TestBasicTestFileDenyList(t *testing.T) {
 		TestPackages: []string{"denytest"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "denytest"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file_test.go", "denytest"))
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 	require.Equal(t, "denytest", issues[0].PackageName)
@@ -212,7 +212,7 @@ func TestPrefixTestFileDenyList(t *testing.T) {
 		TestPackages: []string{"denytest"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "denytest/a", "denytest/b"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file_test.go", "denytest/a", "denytest/b"))
 	require.NoError(t, err)
 	require.Len(t, issues, 2)
 	sortIssues(issues)
@@ -229,7 +229,7 @@ func TestGlobTestFileDenyList(t *testing.T) {
 		TestPackages: []string{"denytest/**/pkg"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "denytest/a/pkg", "denytest/b/c/pkg"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file_test.go", "denytest/a/pkg", "denytest/b/c/pkg"))
 	require.NoError(t, err)
 	require.Len(t, issues, 2)
 	sortIssues(issues)
@@ -246,7 +246,7 @@ func TestMixedTestFileDenyList(t *testing.T) {
 		TestPackages: []string{"denytest"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a", "denytest/a"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file_test.go", "allowtest/a", "denytest/a"))
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 	require.Equal(t, "denytest/a", issues[0].PackageName)
@@ -259,7 +259,7 @@ func TestExcludeGoRootDenyList(t *testing.T) {
 		Packages: []string{"go/ast"},
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "go/ast"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "go/ast"))
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
@@ -271,7 +271,7 @@ func TestIncludeGoRootDenyList(t *testing.T) {
 		IncludeGoRoot: true,
 	}
 
-	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "go/ast"))
+	issues, err := dg.Run(newLoadConfig(), newSimpleProgram("file.go", "go/ast"))
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 	require.Equal(t, "go/ast", issues[0].PackageName)
@@ -285,26 +285,36 @@ func newLoadConfig() *loader.Config {
 	}
 }
 
-func newProgram(fileName string, packagePaths ...string) *loader.Program {
-	// Build up a mini AST of the information we need to run the linter
-	var packageImports []*ast.ImportSpec
-	for i, _ := range packagePaths {
-		packagePath := packagePaths[i]
-		packageImports = append(packageImports, &ast.ImportSpec{
-			Path: &ast.BasicLit{
-				ValuePos: token.Pos(1),
-				Kind:     token.STRING,
-				Value:    packagePath,
-			},
-		})
-	}
+func newSimpleProgram(fileName string, packagePaths ...string) *loader.Program {
+	filesAndPackagePaths := make(map[string][]string, 1)
+	filesAndPackagePaths[fileName] = packagePaths
+	return newProgram(filesAndPackagePaths)
+}
 
-	astFile := &ast.File{
-		Imports: packageImports,
-	}
-
+func newProgram(filesAndPackagePaths map[string][]string) *loader.Program {
+	var astFiles []*ast.File
 	progFileSet := token.NewFileSet()
-	progFileSet.AddFile(fileName, 1, 0)
+
+	for fileName, packagePaths := range filesAndPackagePaths {
+		// Build up a mini AST of the information we need to run the linter
+		var packageImports []*ast.ImportSpec
+		for i, _ := range packagePaths {
+			packagePath := packagePaths[i]
+			packageImports = append(packageImports, &ast.ImportSpec{
+				Path: &ast.BasicLit{
+					ValuePos: token.Pos(i + 1),
+					Kind:     token.STRING,
+					Value:    packagePath,
+				},
+			})
+		}
+
+		astFiles = append(astFiles, &ast.File{
+			Imports: packageImports,
+		})
+
+		progFileSet.AddFile(fileName, len(astFiles), len(packageImports))
+	}
 
 	return &loader.Program{
 		Created: []*loader.PackageInfo{
@@ -313,7 +323,7 @@ func newProgram(fileName string, packagePaths ...string) *loader.Program {
 				Importable:            true,
 				TransitivelyErrorFree: true,
 
-				Files:  []*ast.File{astFile},
+				Files:  astFiles,
 				Errors: nil,
 			},
 		},
