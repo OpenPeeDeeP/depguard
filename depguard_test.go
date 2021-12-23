@@ -10,6 +10,8 @@ import (
 	"golang.org/x/tools/go/loader"
 )
 
+// ========== AllowList ==========
+
 func TestBasicAllowList(t *testing.T) {
 	dg := depguard.Depguard{
 		ListType: depguard.LTWhitelist,
@@ -42,6 +44,67 @@ func TestGlobAllowList(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, issues, 0)
 }
+
+func TestMixedAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType: depguard.LTWhitelist,
+		Packages: []string{"allow"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "allow/a", "deny/a"))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny/a", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
+}
+
+func TestBasicTestFileAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:     depguard.LTWhitelist,
+		TestPackages: []string{"allowtest"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest"))
+	require.NoError(t, err)
+	require.Len(t, issues, 0)
+}
+
+func TestPrefixTestFileAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:     depguard.LTWhitelist,
+		TestPackages: []string{"allowtest"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a", "allowtest/b"))
+	require.NoError(t, err)
+	require.Len(t, issues, 0)
+}
+
+func TestGlobTestFileAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:     depguard.LTWhitelist,
+		TestPackages: []string{"allowtest/**/pkg"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a/pkg", "allowtest/a/b/pkg"))
+	require.NoError(t, err)
+	require.Len(t, issues, 0)
+}
+
+func TestMixedTestFileAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:     depguard.LTWhitelist,
+		TestPackages: []string{"allowtest"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a", "denytest/a"))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "denytest/a", issues[0].PackageName)
+	require.Equal(t, "file_test.go", issues[0].Position.Filename)
+}
+
+// ========== DenyList ==========
 
 func TestBasicDenyList(t *testing.T) {
 	dg := depguard.Depguard{
@@ -84,6 +147,79 @@ func TestGlobDenyList(t *testing.T) {
 	require.Equal(t, "file.go", issues[0].Position.Filename)
 	require.Equal(t, "deny/a/b/pkg", issues[1].PackageName)
 	require.Equal(t, "file.go", issues[1].Position.Filename)
+}
+
+func TestMixedDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType: depguard.LTBlacklist,
+		Packages: []string{"deny"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file.go", "allow/a", "deny/a"))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny/a", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
+}
+
+func TestBasicTestFileDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:     depguard.LTBlacklist,
+		Packages:     []string{"deny"}, // NOTE: Linter will shortcut with no package deny list
+		TestPackages: []string{"denytest"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "denytest"))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "denytest", issues[0].PackageName)
+	require.Equal(t, "file_test.go", issues[0].Position.Filename)
+}
+
+func TestPrefixTestFileDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:     depguard.LTBlacklist,
+		Packages:     []string{"deny"}, // NOTE: Linter will shortcut with no package deny list
+		TestPackages: []string{"denytest"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "denytest/a", "denytest/b"))
+	require.NoError(t, err)
+	require.Len(t, issues, 2)
+	require.Equal(t, "denytest/a", issues[0].PackageName)
+	require.Equal(t, "file_test.go", issues[0].Position.Filename)
+	require.Equal(t, "denytest/b", issues[1].PackageName)
+	require.Equal(t, "file_test.go", issues[1].Position.Filename)
+}
+
+func TestGlobTestFileDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:     depguard.LTBlacklist,
+		Packages:     []string{"deny"}, // NOTE: Linter will shortcut with no package deny list
+		TestPackages: []string{"denytest/**/pkg"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "denytest/a/pkg", "denytest/a/b/pkg"))
+	require.NoError(t, err)
+	require.Len(t, issues, 2)
+	require.Equal(t, "denytest/a/pkg", issues[0].PackageName)
+	require.Equal(t, "file_test.go", issues[0].Position.Filename)
+	require.Equal(t, "denytest/a/b/pkg", issues[1].PackageName)
+	require.Equal(t, "file_test.go", issues[1].Position.Filename)
+}
+
+func TestMixedTestFileDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:     depguard.LTBlacklist,
+		Packages:     []string{"deny"}, // NOTE: Linter will shortcut with no package deny list
+		TestPackages: []string{"denytest"},
+	}
+
+	issues, err := dg.Run(newLoadConfig(), newProgram("file_test.go", "allowtest/a", "denytest/a"))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "denytest/a", issues[0].PackageName)
+	require.Equal(t, "file_test.go", issues[0].Position.Filename)
 }
 
 func newLoadConfig() *loader.Config {
