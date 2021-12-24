@@ -81,14 +81,13 @@ func (dg *Depguard) Run(config *loader.Config, prog *loader.Program) ([]*Issue, 
 	var issues []*Issue
 	for pkg, positions := range directImports {
 		for _, pos := range positions {
+			if ignoreFile(pos.Filename, dg.prefixIgnoreFileRules, dg.globIgnoreFileRules) {
+				continue
+			}
 
 			prefixList, globList := dg.prefixPackages, dg.globPackages
 			if len(dg.TestPackages) > 0 && strings.Index(pos.Filename, "_test.go") != -1 {
 				prefixList, globList = dg.prefixTestPackages, dg.globTestPackages
-			}
-
-			if ignoreFile(pos.Filename, dg.prefixIgnoreFileRules, dg.globIgnoreFileRules) {
-				continue
 			}
 
 			if dg.flagIt(pkg, prefixList, globList) {
