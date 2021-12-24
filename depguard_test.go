@@ -60,7 +60,7 @@ func TestMixedAllowList(t *testing.T) {
 	require.Equal(t, "file.go", issues[0].Position.Filename)
 }
 
-func TestBasicTestFileAllowList(t *testing.T) {
+func TestBasicTestPackagesAllowList(t *testing.T) {
 	dg := depguard.Depguard{
 		ListType:     depguard.LTWhitelist,
 		TestPackages: []string{"allowtest"},
@@ -71,7 +71,7 @@ func TestBasicTestFileAllowList(t *testing.T) {
 	require.Len(t, issues, 0)
 }
 
-func TestPrefixTestFileAllowList(t *testing.T) {
+func TestPrefixTestPackagesAllowList(t *testing.T) {
 	dg := depguard.Depguard{
 		ListType:     depguard.LTWhitelist,
 		TestPackages: []string{"allowtest"},
@@ -82,7 +82,7 @@ func TestPrefixTestFileAllowList(t *testing.T) {
 	require.Len(t, issues, 0)
 }
 
-func TestGlobTestFileAllowList(t *testing.T) {
+func TestGlobTestPackagesAllowList(t *testing.T) {
 	dg := depguard.Depguard{
 		ListType:     depguard.LTWhitelist,
 		TestPackages: []string{"allowtest/**/pkg"},
@@ -93,7 +93,7 @@ func TestGlobTestFileAllowList(t *testing.T) {
 	require.Len(t, issues, 0)
 }
 
-func TestMixedTestFileAllowList(t *testing.T) {
+func TestMixedTestPackagesAllowList(t *testing.T) {
 	dg := depguard.Depguard{
 		ListType:     depguard.LTWhitelist,
 		TestPackages: []string{"allowtest"},
@@ -281,7 +281,7 @@ func TestMixedDenyList(t *testing.T) {
 	require.Equal(t, "file.go", issues[0].Position.Filename)
 }
 
-func TestBasicTestFileDenyList(t *testing.T) {
+func TestBasicTestPackagesDenyList(t *testing.T) {
 	dg := depguard.Depguard{
 		ListType:     depguard.LTBlacklist,
 		Packages:     []string{"deny"}, // NOTE: Linter will shortcut with no package deny list
@@ -295,7 +295,7 @@ func TestBasicTestFileDenyList(t *testing.T) {
 	require.Equal(t, "file_test.go", issues[0].Position.Filename)
 }
 
-func TestPrefixTestFileDenyList(t *testing.T) {
+func TestPrefixTestPackagesDenyList(t *testing.T) {
 	dg := depguard.Depguard{
 		ListType:     depguard.LTBlacklist,
 		Packages:     []string{"deny"}, // NOTE: Linter will shortcut with no package deny list
@@ -312,7 +312,7 @@ func TestPrefixTestFileDenyList(t *testing.T) {
 	require.Equal(t, "file_test.go", issues[1].Position.Filename)
 }
 
-func TestGlobTestFileDenyList(t *testing.T) {
+func TestGlobTestPackagesDenyList(t *testing.T) {
 	dg := depguard.Depguard{
 		ListType:     depguard.LTBlacklist,
 		Packages:     []string{"deny"}, // NOTE: Linter will shortcut with no package deny list
@@ -329,7 +329,7 @@ func TestGlobTestFileDenyList(t *testing.T) {
 	require.Equal(t, "file_test.go", issues[1].Position.Filename)
 }
 
-func TestMixedTestFileDenyList(t *testing.T) {
+func TestMixedTestPackagesDenyList(t *testing.T) {
 	dg := depguard.Depguard{
 		ListType:     depguard.LTBlacklist,
 		Packages:     []string{"deny"}, // NOTE: Linter will shortcut with no package deny list
