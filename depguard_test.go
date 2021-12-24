@@ -131,6 +131,96 @@ func TestIncludeGoRootAllowList(t *testing.T) {
 	require.Equal(t, "file.go", issues[0].Position.Filename)
 }
 
+func TestBasicIgnoreFilesRuleAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTWhitelist,
+		Packages:        []string{"allow"},
+		IgnoreFileRules: []string{"ignore.go"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["ignore.go"] = []string{"allow", "deny"}
+	filesAndPackagePaths["file.go"] = []string{"allow", "deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
+}
+
+func TestPrefixIgnoreFilesRuleAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTWhitelist,
+		Packages:        []string{"allow"},
+		IgnoreFileRules: []string{"ignore"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["ignore/file.go"] = []string{"allow", "deny"}
+	filesAndPackagePaths["file.go"] = []string{"allow", "deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
+}
+
+func TestGlobIgnoreFilesRuleAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTWhitelist,
+		Packages:        []string{"allow"},
+		IgnoreFileRules: []string{"ignore/**/*.go"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["ignore/a/file.go"] = []string{"allow", "deny"}
+	filesAndPackagePaths["file.go"] = []string{"allow", "deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
+}
+
+func TestNegateGlobIgnoreFilesRuleAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTWhitelist,
+		Packages:        []string{"allow"},
+		IgnoreFileRules: []string{"!**/keep/*.go"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["pkg/ignore/file.go"] = []string{"allow", "deny"}
+	filesAndPackagePaths["pkg/keep/file.go"] = []string{"allow", "deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "pkg/keep/file.go", issues[0].Position.Filename)
+}
+
+// NOTE: This is semantically equivalent to using the TestPackages configuration
+func TestNonTestIgnoreFilesRuleAllowList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTWhitelist,
+		Packages:        []string{"allow"},
+		IgnoreFileRules: []string{"!**/*_test.go"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["pkg/file.go"] = []string{"allow", "deny"}
+	filesAndPackagePaths["pkg/file_test.go"] = []string{"allow", "deny"}
+	filesAndPackagePaths["pkg/file_unit_test.go"] = []string{"allow", "deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 2)
+	sortIssues(issues)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "pkg/file_test.go", issues[0].Position.Filename)
+	require.Equal(t, "deny", issues[1].PackageName)
+	require.Equal(t, "pkg/file_unit_test.go", issues[1].Position.Filename)
+}
+
 // ========== DenyList ==========
 
 func TestBasicDenyList(t *testing.T) {
@@ -278,6 +368,96 @@ func TestIncludeGoRootDenyList(t *testing.T) {
 	require.Equal(t, "file.go", issues[0].Position.Filename)
 }
 
+func TestBasicIgnoreFilesRuleDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTBlacklist,
+		Packages:        []string{"deny"},
+		IgnoreFileRules: []string{"ignore.go"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["ignore.go"] = []string{"deny"}
+	filesAndPackagePaths["file.go"] = []string{"deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
+}
+
+func TestPrefixIgnoreFilesRuleDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTBlacklist,
+		Packages:        []string{"deny"},
+		IgnoreFileRules: []string{"ignore"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["ignore/file.go"] = []string{"deny"}
+	filesAndPackagePaths["file.go"] = []string{"deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
+}
+
+func TestGlobIgnoreFilesRuleDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTBlacklist,
+		Packages:        []string{"deny"},
+		IgnoreFileRules: []string{"ignore/**/*.go"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["ignore/a/file.go"] = []string{"deny"}
+	filesAndPackagePaths["file.go"] = []string{"deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "file.go", issues[0].Position.Filename)
+}
+
+func TestNegateGlobIgnoreFilesRuleDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTBlacklist,
+		Packages:        []string{"deny"},
+		IgnoreFileRules: []string{"!**/keep/*.go"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["pkg/ignore/file.go"] = []string{"deny"}
+	filesAndPackagePaths["pkg/keep/file.go"] = []string{"deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "pkg/keep/file.go", issues[0].Position.Filename)
+}
+
+// NOTE: This is semantically equivalent to using the TestPackages configuration
+func TestNonTestIgnoreFilesRuleDenyList(t *testing.T) {
+	dg := depguard.Depguard{
+		ListType:        depguard.LTBlacklist,
+		Packages:        []string{"deny"},
+		IgnoreFileRules: []string{"!**/*_test.go"},
+	}
+
+	filesAndPackagePaths := make(map[string][]string, 0)
+	filesAndPackagePaths["pkg/file.go"] = []string{"deny"}
+	filesAndPackagePaths["pkg/file_test.go"] = []string{"deny"}
+	filesAndPackagePaths["pkg/file_unit_test.go"] = []string{"deny"}
+	issues, err := dg.Run(newLoadConfig(), newProgram(filesAndPackagePaths))
+	require.NoError(t, err)
+	require.Len(t, issues, 2)
+	sortIssues(issues)
+	require.Equal(t, "deny", issues[0].PackageName)
+	require.Equal(t, "pkg/file_test.go", issues[0].Position.Filename)
+	require.Equal(t, "deny", issues[1].PackageName)
+	require.Equal(t, "pkg/file_unit_test.go", issues[1].Position.Filename)
+}
+
 func newLoadConfig() *loader.Config {
 	return &loader.Config{
 		Cwd:   "",
@@ -295,6 +475,7 @@ func newProgram(filesAndPackagePaths map[string][]string) *loader.Program {
 	var astFiles []*ast.File
 	progFileSet := token.NewFileSet()
 
+	programCounter := 1
 	for fileName, packagePaths := range filesAndPackagePaths {
 		// Build up a mini AST of the information we need to run the linter
 		var packageImports []*ast.ImportSpec
@@ -302,7 +483,7 @@ func newProgram(filesAndPackagePaths map[string][]string) *loader.Program {
 			packagePath := packagePaths[i]
 			packageImports = append(packageImports, &ast.ImportSpec{
 				Path: &ast.BasicLit{
-					ValuePos: token.Pos(i + 1),
+					ValuePos: token.Pos(programCounter + i),
 					Kind:     token.STRING,
 					Value:    packagePath,
 				},
@@ -313,7 +494,8 @@ func newProgram(filesAndPackagePaths map[string][]string) *loader.Program {
 			Imports: packageImports,
 		})
 
-		progFileSet.AddFile(fileName, len(astFiles), len(packageImports))
+		progFileSet.AddFile(fileName, programCounter, len(packageImports))
+		programCounter += len(packageImports) + 1
 	}
 
 	return &loader.Program{
