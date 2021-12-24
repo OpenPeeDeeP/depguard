@@ -45,17 +45,19 @@ The following is an example configuration file.
 
 ### Ignore File Rules
 
-The configuration also allows you to specify rules to ignore certain files considered by the linter. This means that you need not apply package import checks across your entire code base.
+The configuration also allows us to specify rules to ignore certain files considered by the linter. This means that we need not apply package import checks across our entire code base.
 
 For example, consider the following configuration to block a test package:
 ```json
 {
   "type": "denylist",
+   // NOTE: Required due to shortcut logic in the linter
+  "packages": ["github.com/stretchr/testify"],
   "inTests": ["github.com/stretchr/testify"]
 }
 ```
 
-We can use a `ignoreFileRules` field to write a semantically equivalent configuration:
+We can use a `ignoreFileRules` field to write a configuration that only considers test files:
 ```json
 {
   "type": "denylist",
@@ -64,7 +66,7 @@ We can use a `ignoreFileRules` field to write a semantically equivalent configur
 }
 ```
 
-Or if you wanted to consider only non-test files:
+Or if we wanted to consider only non-test files:
 ```json
 {
   "type": "denylist",
