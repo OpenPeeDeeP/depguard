@@ -37,6 +37,12 @@ type Issue struct {
 	Position    token.Position
 }
 
+// Wrapper for glob patterns that allows for custom negation
+type negatableGlob struct {
+	g      glob.Glob
+	negate bool
+}
+
 // Depguard checks imports to make sure they follow the given list and constraints.
 type Depguard struct {
 	ListType      ListType
@@ -52,7 +58,7 @@ type Depguard struct {
 
 	IgnoreFileRules       []string
 	prefixIgnoreFileRules []string
-	globIgnoreFileRules   []glob.Glob
+	globIgnoreFileRules   []negatableGlob
 
 	prefixRoot []string
 }
@@ -81,7 +87,7 @@ func (dg *Depguard) Run(config *loader.Config, prog *loader.Program) ([]*Issue, 
 				prefixList, globList = dg.prefixTestPackages, dg.globTestPackages
 			}
 
-			if strInList(pos.Filename, dg.prefixIgnoreFileRules, dg.globIgnoreFileRules) {
+			if ignoreFile(pos.Filename, dg.prefixIgnoreFileRules, dg.globIgnoreFileRules) {
 				continue
 			}
 
@@ -132,11 +138,21 @@ func (dg *Depguard) initialize(config *loader.Config, prog *loader.Program) erro
 	// parse ignore file rules
 	for _, rule := range dg.IgnoreFileRules {
 		if strings.ContainsAny(rule, "!?*[]{}") {
+			ng := negatableGlob{}
+			if strings.HasPrefix(rule, "!") {
+				ng.negate = true
+				rule = rule[1:] // Strip out the leading '!'
+			} else {
+				ng.negate = false
+			}
+
 			g, err := glob.Compile(rule, '/')
 			if err != nil {
 				return err
 			}
-			dg.globIgnoreFileRules = append(dg.globIgnoreFileRules, g)
+			ng.g = g
+
+			dg.globIgnoreFileRules = append(dg.globIgnoreFileRules, ng)
 		} else {
 			dg.prefixIgnoreFileRules = append(dg.prefixIgnoreFileRules, rule)
 		}
@@ -184,11 +200,18 @@ func (dg *Depguard) createImportMap(prog *loader.Program) (map[string][]token.Po
 	return importMap, nil
 }
 
-func strInList(str string, prefixList []string, globList []glob.Glob) bool {
-	if strInPrefixList(str, prefixList) {
+func ignoreFile(filename string, prefixList []string, negatableGlobList []negatableGlob) bool {
+	if strInPrefixList(filename, prefixList) {
 		return true
 	}
-	return strInGlobList(str, globList)
+	return strInNegatableGlobList(filename, negatableGlobList)
+}
+
+func pkgInList(pkg string, prefixList []string, globList []glob.Glob) bool {
+	if strInPrefixList(pkg, prefixList) {
+		return true
+	}
+	return strInGlobList(pkg, globList)
 }
 
 func strInPrefixList(str string, prefixList []string) bool {
@@ -214,11 +237,23 @@ func strInGlobList(str string, globList []glob.Glob) bool {
 	return false
 }
 
+func strInNegatableGlobList(str string, negatableGlobList []negatableGlob) bool {
+	for _, ng := range negatableGlobList {
+		// Return true when:
+		//  - Match is true and negate is off
+		//  - Match is false and negate is on
+		if ng.g.Match(str) != ng.negate {
+			return true
+		}
+	}
+	return false
+}
+
 // InList | WhiteList | BlackList
 //   y   |           |     x
 //   n   |     x     |
 func (dg *Depguard) flagIt(pkg string, prefixList []string, globList []glob.Glob) bool {
-	return strInList(pkg, prefixList, globList) == (dg.ListType == LTBlacklist)
+	return pkgInList(pkg, prefixList, globList) == (dg.ListType == LTBlacklist)
 }
 
 func cleanBasicLitString(value string) string {
