@@ -51,7 +51,6 @@ For example, consider the following configuration to block a test package:
 ```json
 {
   "type": "denylist",
-   // NOTE: Required due to shortcut logic in the linter
   "packages": ["github.com/stretchr/testify"],
   "inTests": ["github.com/stretchr/testify"]
 }
