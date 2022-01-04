@@ -43,6 +43,7 @@ type config struct {
 	IncludeGoRoot             bool              `json:"includeGoRoot"`
 	IncludeGoStdLib           bool              `json:"includeGoStdLib"`
 	InTests                   []string          `json:"inTests"`
+	IgnoreFileRules           []string          `json:"ignoreFileRules"`
 	listType                  depguard.ListType
 }
 
@@ -118,10 +119,11 @@ func main() {
 		log.Fatalln(err)
 	}
 	dg := &depguard.Depguard{
-		Packages:      config.Packages,
-		IncludeGoRoot: config.IncludeGoRoot,
-		ListType:      config.listType,
-		TestPackages:  config.InTests,
+		Packages:        config.Packages,
+		IncludeGoRoot:   config.IncludeGoRoot,
+		ListType:        config.listType,
+		TestPackages:    config.InTests,
+		IgnoreFileRules: config.IgnoreFileRules,
 	}
 	issues, err := dg.Run(conf, prog)
 	if err != nil {

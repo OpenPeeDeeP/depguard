@@ -43,6 +43,39 @@ The following is an example configuration file.
 - Set `includeGoStdLib` (`includeGoRoot` for backwards compatibility) to true if you want to check the list against standard lib.
   If not specified the default is false.
 
+### Ignore File Rules
+
+The configuration also allows us to specify rules to ignore certain files considered by the linter. This means that we need not apply package import checks across our entire code base.
+
+For example, consider the following configuration to block a test package:
+```json
+{
+  "type": "denylist",
+  "packages": ["github.com/stretchr/testify"],
+  "inTests": ["github.com/stretchr/testify"]
+}
+```
+
+We can use a `ignoreFileRules` field to write a configuration that only considers test files:
+```json
+{
+  "type": "denylist",
+  "packages": ["github.com/stretchr/testify"],
+  "ignoreFileRules": ["!**/*_test.go"]
+}
+```
+
+Or if we wanted to consider only non-test files:
+```json
+{
+  "type": "denylist",
+  "packages": ["github.com/stretchr/testify"],
+  "ignoreFileRules": ["**/*_test.go"]
+}
+```
+
+Like the `packages` field, the `ignoreFileRules` field can accept both string prefixes and string glob patterns. Note in the first example above, the use of the `!` character in front of the rule. This is a special character which signals that the linter should negate the rule. This allows for more precise control, but it is only available for glob patterns.
+
 ## Gometalinter
 
 The binary installation of this linter can be used with
