@@ -1,10 +1,13 @@
-module github.com/OpenPeeDeeP/depguard
+module github.com/OpenPeeDeeP/depguard/v2
 
-go 1.13
+go 1.17
 
 require (
 	github.com/gobwas/glob v0.2.3
-	github.com/kisielk/gotool v1.0.0
-	github.com/stretchr/testify v1.7.0 // indirect
-	golang.org/x/tools v0.0.0-20180525024113-a5b4c53f6e8b
+	golang.org/x/tools v0.1.12
+)
+
+require (
+	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
 )

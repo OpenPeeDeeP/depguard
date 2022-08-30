@@ -1,216 +1,136 @@
-package depguard
+package v2
 
 import (
+	"fmt"
+	"go/ast"
 	"go/build"
-	"go/token"
-	"io/ioutil"
+	"os"
 	"path"
 	"sort"
 	"strings"
 
 	"github.com/gobwas/glob"
-	"golang.org/x/tools/go/loader"
+	"golang.org/x/tools/go/analysis"
 )
 
 // ListType states what kind of list is passed in.
 type ListType int
 
 const (
-	// LTBlacklist states the list given is a blacklist. (default)
-	LTBlacklist ListType = iota
-	// LTWhitelist states the list given is a whitelist.
-	LTWhitelist
+	// LTDenyList states the list given is a list of packages to deny. (default)
+	LTDenyList ListType = iota
+	// LTAllowList states the list given is a list of package to allow.
+	LTAllowList
 )
 
-// StringToListType makes it easier to turn a string into a ListType.
-// It assumes that the string representation is lower case.
-var StringToListType = map[string]ListType{
-	"allowlist": LTWhitelist,
-	"denylist":  LTBlacklist,
-	"whitelist": LTWhitelist,
-	"blacklist": LTBlacklist,
-}
-
-// Issue with the package with PackageName at the Position.
-type Issue struct {
-	PackageName string
-	Position    token.Position
-}
-
-// Wrapper for glob patterns that allows for custom negation
 type negatableGlob struct {
-	g      glob.Glob
+	glob   glob.Glob
 	negate bool
 }
 
-// Depguard checks imports to make sure they follow the given list and constraints.
-type Depguard struct {
-	ListType      ListType
-	IncludeGoRoot bool
+// TODO define if certain slices should AND results or OR results accordingly. Is it configurable?
+// TODO Maybe having both prefix and glob is too much to consider the above... Any alternatives that may work better
+// List defines the packages to either allow or deny within certain files.
+// All Globs are compiled with https://pkg.go.dev/github.com/gobwas/glob#Compile.
+// We do add a special case to all globs for negating the match. Prefix the string with "!".
+// EX. *_test.go matches test files where !*_test.go matches anything but test files.
+// Ordering of the different slices does matter as they are treated as an OR operation.
+// AKA first truthy value resolves to a match.
+type List struct {
+	// Globs matching files to use this list for (allow list)
+	// If this list is empty, it is assumes to be applied to every file.
+	// Order matters so the first matching entry assumes the file should be processed by this list.
+	// EX. *_test.go only applies this list to test files
+	// EX. ["packageA/**", "!packageA/foo.go"] will match all files in packageA (because of ordering)
+	// EX. ["!packageA/foo.go", "packageA/**"] will match all files in packageA except for foo.go
+	Files []string
 
-	Packages       []string
-	prefixPackages []string
-	globPackages   []glob.Glob
+	// The kind of list this is
+	ListType ListType
 
-	TestPackages       []string
-	prefixTestPackages []string
-	globTestPackages   []glob.Glob
+	// TODO would like a way to make suggestions!
+	// The list of packages this List is concerned about.
+	// Assumed to be a list of package prefixes.
+	// If a glob character is detected, would use a glob match instead.
+	// All non-globs are checked first, then goes through each glob in the order they were defined to try and match.
+	List []string
 
-	IgnoreFileRules       []string
-	prefixIgnoreFileRules []string
-	globIgnoreFileRules   []negatableGlob
-
-	prefixRoot []string
+	// Whether or not this list should try and match against packages found from GOROOT.
+	// EX. os, path, strings, etc.
+	IgnoreGoRootPackages bool
 }
 
-// Run checks for dependencies given the program and validates them against
-// Packages.
-func (dg *Depguard) Run(config *loader.Config, prog *loader.Program) ([]*Issue, error) {
-	// Shortcut execution on an empty blacklist as that means every package is allowed
-	if dg.ListType == LTBlacklist && len(dg.Packages) == 0 {
-		return nil, nil
-	}
-
-	if err := dg.initialize(config, prog); err != nil {
-		return nil, err
-	}
-	directImports, err := dg.createImportMap(prog)
-	if err != nil {
-		return nil, err
-	}
-	var issues []*Issue
-	for pkg, positions := range directImports {
-		for _, pos := range positions {
-			if ignoreFile(pos.Filename, dg.prefixIgnoreFileRules, dg.globIgnoreFileRules) {
-				continue
-			}
-
-			prefixList, globList := dg.prefixPackages, dg.globPackages
-			if len(dg.TestPackages) > 0 && strings.Index(pos.Filename, "_test.go") != -1 {
-				prefixList, globList = dg.prefixTestPackages, dg.globTestPackages
-			}
-
-			if dg.flagIt(pkg, prefixList, globList) {
-				issues = append(issues, &Issue{
-					PackageName: pkg,
-					Position:    pos,
-				})
-			}
-		}
-	}
-	return issues, nil
+// LinterSettings define how Depguard behaves.
+type LinterSettings struct {
+	// The different lists that Depguard uses for import matching.
+	// The order in which the lists are defined is important.
+	// The first list to match on a file is used.
+	Lists []*List
 }
 
-func (dg *Depguard) initialize(config *loader.Config, prog *loader.Program) error {
-	// parse ordinary guarded packages
-	for _, pkg := range dg.Packages {
-		if strings.ContainsAny(pkg, "!?*[]{}") {
-			g, err := glob.Compile(pkg, '/')
-			if err != nil {
-				return err
-			}
-			dg.globPackages = append(dg.globPackages, g)
-		} else {
-			dg.prefixPackages = append(dg.prefixPackages, pkg)
-		}
-	}
-
-	// Sort the packages so we can have a faster search in the array
-	sort.Strings(dg.prefixPackages)
-
-	// parse guarded tests packages
-	for _, pkg := range dg.TestPackages {
-		if strings.ContainsAny(pkg, "!?*[]{}") {
-			g, err := glob.Compile(pkg, '/')
-			if err != nil {
-				return err
-			}
-			dg.globTestPackages = append(dg.globTestPackages, g)
-		} else {
-			dg.prefixTestPackages = append(dg.prefixTestPackages, pkg)
-		}
-	}
-
-	// Sort the test packages so we can have a faster search in the array
-	sort.Strings(dg.prefixTestPackages)
-
-	// parse ignore file rules
-	for _, rule := range dg.IgnoreFileRules {
-		if strings.ContainsAny(rule, "!?*[]{}") {
-			ng := negatableGlob{}
-			if strings.HasPrefix(rule, "!") {
-				ng.negate = true
-				rule = rule[1:] // Strip out the leading '!'
-			} else {
-				ng.negate = false
-			}
-
-			g, err := glob.Compile(rule, '/')
-			if err != nil {
-				return err
-			}
-			ng.g = g
-
-			dg.globIgnoreFileRules = append(dg.globIgnoreFileRules, ng)
-		} else {
-			dg.prefixIgnoreFileRules = append(dg.prefixIgnoreFileRules, rule)
-		}
-	}
-
-	// Sort the rules so we can have a faster search in the array
-	sort.Strings(dg.prefixIgnoreFileRules)
-
-	if !dg.IncludeGoRoot {
-		var err error
-		dg.prefixRoot, err = listRootPrefixs(config.Build)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+// V1Settings is used for backwards compatibility only and should move to the new LinterSettings if possible.
+// Deprecated: Use LinterSettings instead.
+type V1Settings struct {
+	ListType        ListType
+	IncludeGoRoot   bool
+	Packages        []string
+	TestPackages    []string
+	IgnoreFileRules []string
 }
 
-func (dg *Depguard) createImportMap(prog *loader.Program) (map[string][]token.Position, error) {
-	importMap := make(map[string][]token.Position)
-	// For the directly imported packages
-	for _, imported := range prog.InitialPackages() {
-		// Go through their files
-		for _, file := range imported.Files {
-			// And populate a map of all direct imports and their positions
-			// This will filter out GoRoot depending on the Depguard.IncludeGoRoot
-			for _, fileImport := range file.Imports {
-				fileImportPath := cleanBasicLitString(fileImport.Path.Value)
-				if !dg.IncludeGoRoot && dg.isRoot(fileImportPath) {
-					continue
-				}
-				position := prog.Fset.Position(fileImport.Pos())
-				positions, found := importMap[fileImportPath]
-				if !found {
-					importMap[fileImportPath] = []token.Position{
-						position,
-					}
-					continue
-				}
-				importMap[fileImportPath] = append(positions, position)
-			}
+// NewAnalyzerFromV2Settings returns an Analyzer from V1's settings.
+// Deprecated: Use NewAnalyzer instead.
+func NewAnalyzerFromV1Settings(settings *V1Settings) (*analysis.Analyzer, error) {
+	ls := &LinterSettings{}
+	// TODO find a way to handle the old IgnoreFileRules (mix of glob and prefix)
+	hasTestList := false
+	if len(settings.TestPackages) > 0 {
+		hasTestList = true
+		ls.Lists = append(ls.Lists, &List{
+			Files:                []string{"*_test.go"},
+			ListType:             settings.ListType,
+			List:                 settings.TestPackages,
+			IgnoreGoRootPackages: !settings.IncludeGoRoot,
+		})
+	}
+	if len(settings.Packages) > 0 {
+		files := []string{}
+		if hasTestList {
+			files = append(files, "!*_test.go")
+		}
+		ls.Lists = append(ls.Lists, &List{
+			Files:                files,
+			ListType:             settings.ListType,
+			List:                 settings.Packages,
+			IgnoreGoRootPackages: !settings.IncludeGoRoot,
+		})
+	}
+	return NewAnalyzer(ls)
+}
+
+// NewAnalyzer creates a new analyzer from the settings passed in
+func NewAnalyzer(settings *LinterSettings) (*analysis.Analyzer, error) {
+	analyzer := newAnalyzer(settings)
+	return analyzer, nil
+}
+
+func newAnalyzer(settings *LinterSettings) *analysis.Analyzer {
+	return &analysis.Analyzer{
+		Name:             "Debguard",
+		Doc:              "Go linter that checks if package imports are in a list of acceptable packages",
+		Run:              settings.run,
+		RunDespiteErrors: false,
+	}
+}
+
+func (s *LinterSettings) run(pass *analysis.Pass) (interface{}, error) {
+	for _, file := range pass.Files {
+		for _, imp := range file.Imports {
+			pass.ReportRangef(imp, "%s is an import", rawBasicLit(imp.Path))
 		}
 	}
-	return importMap, nil
-}
 
-func ignoreFile(filename string, prefixList []string, negatableGlobList []negatableGlob) bool {
-	if strInPrefixList(filename, prefixList) {
-		return true
-	}
-	return strInNegatableGlobList(filename, negatableGlobList)
-}
-
-func pkgInList(pkg string, prefixList []string, globList []glob.Glob) bool {
-	if strInPrefixList(pkg, prefixList) {
-		return true
-	}
-	return strInGlobList(pkg, globList)
+	return nil, nil
 }
 
 func strInPrefixList(str string, prefixList []string) bool {
@@ -236,39 +156,13 @@ func strInGlobList(str string, globList []glob.Glob) bool {
 	return false
 }
 
-func strInNegatableGlobList(str string, negatableGlobList []negatableGlob) bool {
-	for _, ng := range negatableGlobList {
-		// Return true when:
-		//  - Match is true and negate is off
-		//  - Match is false and negate is on
-		if ng.g.Match(str) != ng.negate {
-			return true
-		}
-	}
-	return false
-}
-
-// InList | WhiteList | BlackList
-//   y   |           |     x
-//   n   |     x     |
-func (dg *Depguard) flagIt(pkg string, prefixList []string, globList []glob.Glob) bool {
-	return pkgInList(pkg, prefixList, globList) == (dg.ListType == LTBlacklist)
-}
-
-func cleanBasicLitString(value string) string {
-	return strings.Trim(value, "\"\\")
-}
-
 // We can do this as all imports that are not root are either prefixed with a domain
 // or prefixed with `./` or `/` to dictate it is a local file reference
-func listRootPrefixs(buildCtx *build.Context) ([]string, error) {
-	if buildCtx == nil {
-		buildCtx = &build.Default
-	}
-	root := path.Join(buildCtx.GOROOT, "src")
-	fs, err := ioutil.ReadDir(root)
+func listGoRootPrefixes() ([]string, error) {
+	root := path.Join(build.Default.GOROOT, "src")
+	fs, err := os.ReadDir(root)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not read GOROOT directory: %w", err)
 	}
 	var pkgPrefix []string
 	for _, f := range fs {
@@ -280,22 +174,6 @@ func listRootPrefixs(buildCtx *build.Context) ([]string, error) {
 	return pkgPrefix, nil
 }
 
-func (dg *Depguard) isRoot(importPath string) bool {
-	// Idx represents where in the package slice the passed in package would go
-	// when sorted. -1 Just means that it would be at the very front of the slice.
-	idx := sort.Search(len(dg.prefixRoot), func(i int) bool {
-		return dg.prefixRoot[i] > importPath
-	}) - 1
-	// This means that the package passed in has no way to be prefixed by anything
-	// in the package list as it is already smaller then everything
-	if idx == -1 {
-		return false
-	}
-	// if it is prefixed by a root prefix we need to check if it is an exact match
-	// or prefix with `/` as this could return false posative if the domain was
-	// `archive.com` for example as `archive` is a go root package.
-	if strings.HasPrefix(importPath, dg.prefixRoot[idx]) {
-		return strings.HasPrefix(importPath, dg.prefixRoot[idx]+"/") || importPath == dg.prefixRoot[idx]
-	}
-	return false
+func rawBasicLit(lit *ast.BasicLit) string {
+	return strings.Trim(lit.Value, "\"")
 }
