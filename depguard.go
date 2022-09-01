@@ -90,7 +90,7 @@ func (dg *Depguard) Run(config *loader.Config, prog *loader.Program) ([]*Issue, 
 			}
 
 			prefixList, globList := dg.prefixPackages, dg.globPackages
-			if len(dg.TestPackages) > 0 && strings.Index(pos.Filename, "_test.go") != -1 {
+			if len(dg.TestPackages) > 0 && strings.HasSuffix(pos.Filename, "_test.go") {
 				prefixList, globList = dg.prefixTestPackages, dg.globTestPackages
 			}
 
@@ -261,8 +261,9 @@ func strInNegatableGlobList(str string, negatableGlobList []negatableGlob) bool 
 }
 
 // InList | WhiteList | BlackList
-//   y   |           |     x
-//   n   |     x     |
+//
+//	y   |           |     x
+//	n   |     x     |
 func (dg *Depguard) flagIt(pkg string, prefixList []string, globList []glob.Glob) bool {
 	return pkgInList(pkg, prefixList, globList) == (dg.ListType == LTBlacklist)
 }

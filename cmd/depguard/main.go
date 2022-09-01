@@ -174,7 +174,10 @@ func printIssues(c *config, issues []*depguard.Issue) {
 	buf := new(bytes.Buffer)
 	var str strings.Builder
 	for _, issue := range issues {
-		temp.Execute(buf, issue)
+		err := temp.Execute(buf, issue)
+		if err != nil {
+			eatErrors(err)
+		}
 		if c.listType == depguard.LTWhitelist {
 			str.WriteString(buf.String() + whitelistMsg)
 		} else {

@@ -479,8 +479,7 @@ func newProgram(filesAndPackagePaths map[string][]string) *loader.Program {
 	for fileName, packagePaths := range filesAndPackagePaths {
 		// Build up a mini AST of the information we need to run the linter
 		var packageImports []*ast.ImportSpec
-		for i, _ := range packagePaths {
-			packagePath := packagePaths[i]
+		for i, packagePath := range packagePaths {
 			packageImports = append(packageImports, &ast.ImportSpec{
 				Path: &ast.BasicLit{
 					ValuePos: token.Pos(programCounter + i),
