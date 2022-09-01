@@ -1,0 +1,4 @@
+{
+    "go.formatTool": "goimports",
+    "go.lintTool": "golangci-lint"
+}

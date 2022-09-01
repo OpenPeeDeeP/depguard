@@ -23,11 +23,6 @@ const (
 	LTAllowList
 )
 
-type negatableGlob struct {
-	glob   glob.Glob
-	negate bool
-}
-
 // TODO define if certain slices should AND results or OR results accordingly. Is it configurable?
 // TODO Maybe having both prefix and glob is too much to consider the above... Any alternatives that may work better
 // List defines the packages to either allow or deny within certain files.
