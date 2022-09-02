@@ -19,6 +19,9 @@ env:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        dir: [".", "cmd/depguard"]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -30,11 +33,16 @@ jobs:
 
     - name: Build
       run: go build -v ./...
+      working-directory: ${{ matrix.dir }}
 
     - name: Test
       run: go test -v ./...
+      working-directory: ${{ matrix.dir }}
 
   lint:
+    strategy:
+      matrix:
+        dir: [".", "cmd/depguard"]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -46,3 +54,5 @@ jobs:
 
     - name: Lint
       uses: golangci/golangci-lint-action@v3
+      with:
+        working-directory: ${{ matrix.dir }}

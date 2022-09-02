@@ -63,23 +63,3 @@ func TestStrInGlobList(t *testing.T) {
 	t.Run("match", testStrInGlobList("some/foo/bar/a", true))
 	t.Run("no_match", testStrInGlobList("some/foo/b", false))
 }
-
-func TestListGoRootPrefixes(t *testing.T) {
-	pre, err := listGoRootPrefixes()
-	if err != nil {
-		t.FailNow()
-	}
-	// Just make sure a few are in there
-	if !contains(pre, "os") && !contains(pre, "strings") {
-		t.Fail()
-	}
-}
-
-func contains(sl []string, str string) bool {
-	for _, s := range sl {
-		if s == str {
-			return true
-		}
-	}
-	return false
-}

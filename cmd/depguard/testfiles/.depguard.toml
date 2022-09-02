@@ -1,0 +1,22 @@
+[main]
+files = [
+	"$all",
+    "!$test"
+]
+allow = [
+  "$gostd",
+  "github.com/"
+]
+[main.deny]
+reflect = "Who needs reflection"
+"github.com/OpenPeeDeeP" = "Use Something Else"
+
+[tests]
+files = [
+	"$test"
+]
+allow = [
+	"github.com/test"
+]
+[tests.deny]
+"github.com/OpenPeeDeeP/" = "Use Something Else"

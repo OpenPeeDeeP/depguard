@@ -11,7 +11,7 @@ matching as it is faster than glob matching. The fewer glob matches the better.
 ## Install
 
 ```bash
-go get -u github.com/OpenPeeDeeP/depguard
+go get github.com/OpenPeeDeeP/depguard/v2
 ```
 
 ## Config

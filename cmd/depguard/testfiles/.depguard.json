@@ -1,0 +1,27 @@
+{
+  "main": {
+    "files": [
+      "$all",
+      "!$test"
+    ],
+    "allow": [
+      "$gostd",
+      "github.com/"
+    ],
+    "deny": {
+      "reflect": "Who needs reflection",
+      "github.com/OpenPeeDeeP": "Use Something Else"
+    }
+  },
+  "tests": {
+    "files": [
+      "$test"
+    ],
+    "allow": [
+      "github.com/test"
+    ],
+    "deny": {
+      "github.com/OpenPeeDeeP/": "Use Something Else"
+    }
+  }
+}
