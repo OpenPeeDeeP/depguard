@@ -1,4 +1,7 @@
 {
     "go.formatTool": "goimports",
-    "go.lintTool": "golangci-lint"
+    "go.lintTool": "golangci-lint",
+    "gopls": {
+        "build.experimentalWorkspaceModule": true
+    },
 }
