@@ -11,9 +11,9 @@ import (
 )
 
 type List struct {
-	Files []string          `json:"files" yaml:"files" toml:"files"`
-	Allow []string          `json:"allow" yaml:"allow" toml:"allow"`
-	Deny  map[string]string `json:"deny" yaml:"deny" toml:"deny"`
+	Files []string          `json:"files" yaml:"files" toml:"files" mapstructure:"files"`
+	Allow []string          `json:"allow" yaml:"allow" toml:"allow" mapstructure:"allow"`
+	Deny  map[string]string `json:"deny" yaml:"deny" toml:"deny" mapstructure:"deny"`
 }
 
 type listMode int
@@ -27,6 +27,7 @@ const (
 type list struct {
 	name        string
 	files       []glob.Glob
+	negFiles    []glob.Glob
 	listMode    listMode
 	allow       []string
 	deny        []string
@@ -34,46 +35,76 @@ type list struct {
 }
 
 func (l *List) compile() (*list, error) {
+	if l == nil {
+		return nil, nil
+	}
 	li := &list{}
 	var errs utils.MultiError
-	// TODO Expand Files
-	// TODO Split files to negatable globs
+	var err error
 
 	// Compile Files
-	li.files = make([]glob.Glob, 0, len(l.Files))
 	for _, f := range l.Files {
-		g, err := glob.Compile(f, '/')
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s could not be compiled: %w", f, err))
-			continue
+		var negate bool
+		if len(f) > 0 && f[0] == '!' {
+			negate = true
+			f = f[1:]
 		}
-		li.files = append(li.files, g)
+		// Expand File if needed
+		fs, err := utils.ExpandSlice([]string{f}, utils.PathExpandable)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		for _, exp := range fs {
+			g, err := glob.Compile(exp, '/')
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s could not be compiled: %w", exp, err))
+				continue
+			}
+			if negate {
+				li.negFiles = append(li.negFiles, g)
+				continue
+			}
+			li.files = append(li.files, g)
+		}
 	}
 
-	// TODO Expand Allow
+	if len(l.Allow) > 0 {
+		// Expand Allow
+		l.Allow, err = utils.ExpandSlice(l.Allow, utils.PackageExpandable)
+		if err != nil {
+			errs = append(errs, err)
+		}
 
-	// Sort Allow
-	li.allow = make([]string, len(l.Allow))
-	copy(li.allow, l.Allow)
-	sort.Strings(li.allow)
-
-	// TODO Expand Deny Map (to keep suggestions)
-
-	// Split Deny Into Package Slice
-	li.deny = make([]string, 0, len(l.Deny))
-	for pkg := range l.Deny {
-		li.deny = append(li.deny, pkg)
+		// Sort Allow
+		li.allow = make([]string, len(l.Allow))
+		copy(li.allow, l.Allow)
+		sort.Strings(li.allow)
 	}
 
-	// Sort Deny
-	sort.Strings(li.deny)
+	if l.Deny != nil {
+		// Expand Deny Map (to keep suggestions)
+		err = utils.ExpandMap(l.Deny, utils.PackageExpandable)
+		if err != nil {
+			errs = append(errs, err)
+		}
 
-	// Populate Suggestions to match the Deny order
-	li.suggestions = make([]string, 0, len(li.deny))
-	for _, dp := range li.deny {
-		li.suggestions = append(li.suggestions, strings.TrimSpace(l.Deny[dp]))
+		// Split Deny Into Package Slice
+		li.deny = make([]string, 0, len(l.Deny))
+		for pkg := range l.Deny {
+			li.deny = append(li.deny, pkg)
+		}
+
+		// Sort Deny
+		sort.Strings(li.deny)
+
+		// Populate Suggestions to match the Deny order
+		li.suggestions = make([]string, 0, len(li.deny))
+		for _, dp := range li.deny {
+			li.suggestions = append(li.suggestions, strings.TrimSpace(l.Deny[dp]))
+		}
 	}
 
+	// Populate the type of this list
 	if len(li.allow) > 0 && len(li.deny) > 0 {
 		li.listMode = lmMixed
 	} else if len(li.allow) > 0 {
@@ -81,7 +112,7 @@ func (l *List) compile() (*list, error) {
 	} else if len(li.deny) > 0 {
 		li.listMode = lmDeny
 	} else {
-		return nil, errors.New("must have an Allow and/or Deny package list")
+		errs = append(errs, errors.New("must have an Allow and/or Deny package list"))
 	}
 
 	if len(errs) > 0 {
@@ -104,15 +135,23 @@ func (l LinterSettings) compile() (linterSettings, error) {
 		if err != nil {
 			return nil, err
 		}
+		li.name = "Main"
 		return linterSettings{li}, nil
 	}
-
+	names := make([]string, 0, len(l))
+	for name := range l {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	li := make(linterSettings, 0, len(l))
 	var errs utils.MultiError
-	for name, set := range l {
-		c, err := set.compile()
+	for _, name := range names {
+		c, err := l[name].compile()
 		if err != nil {
 			errs = append(errs, err)
+			continue
+		}
+		if c == nil {
 			continue
 		}
 		c.name = name
