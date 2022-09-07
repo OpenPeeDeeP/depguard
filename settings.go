@@ -16,19 +16,10 @@ type List struct {
 	Deny  map[string]string `json:"deny" yaml:"deny" toml:"deny" mapstructure:"deny"`
 }
 
-type listMode int
-
-const (
-	lmAllow listMode = iota // Only packages in allow are allowed
-	lmDeny                  // Any package in deny is blocked
-	lmMixed                 // Package must exist in allow and not be blocked in deny
-)
-
 type list struct {
 	name        string
 	files       []glob.Glob
 	negFiles    []glob.Glob
-	listMode    listMode
 	allow       []string
 	deny        []string
 	suggestions []string
@@ -105,13 +96,7 @@ func (l *List) compile() (*list, error) {
 	}
 
 	// Populate the type of this list
-	if len(li.allow) > 0 && len(li.deny) > 0 {
-		li.listMode = lmMixed
-	} else if len(li.allow) > 0 {
-		li.listMode = lmAllow
-	} else if len(li.deny) > 0 {
-		li.listMode = lmDeny
-	} else {
+	if len(li.allow) == 0 && len(li.deny) == 0 {
 		errs = append(errs, errors.New("must have an Allow and/or Deny package list"))
 	}
 
