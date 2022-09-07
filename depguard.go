@@ -1,11 +1,11 @@
 package depguard
 
 import (
+	"fmt"
 	"go/ast"
-	"sort"
+	"path/filepath"
 	"strings"
 
-	"github.com/gobwas/glob"
 	"golang.org/x/tools/go/analysis"
 )
 
@@ -30,35 +30,27 @@ func newAnalyzer(settings linterSettings) *analysis.Analyzer {
 
 func (s linterSettings) run(pass *analysis.Pass) (interface{}, error) {
 	for _, file := range pass.Files {
+		// For Windows need to replace separator with '/'
+		fileName := filepath.ToSlash(pass.Fset.Position(file.Pos()).Filename)
+		lists := s.whichLists(fileName)
 		for _, imp := range file.Imports {
-			pass.ReportRangef(imp, "%s is an import", rawBasicLit(imp.Path))
+			for _, l := range lists {
+				if allowed, sugg := l.importAllowed(rawBasicLit(imp.Path)); !allowed {
+					diag := analysis.Diagnostic{
+						Pos:     imp.Pos(),
+						End:     imp.End(),
+						Message: fmt.Sprintf("import '%s' is not allowed from list '%s'", rawBasicLit(imp.Path), l.name),
+					}
+					if sugg != "" {
+						diag.Message = fmt.Sprintf("%s: %s", diag.Message, sugg)
+						diag.SuggestedFixes = append(diag.SuggestedFixes, analysis.SuggestedFix{Message: sugg})
+					}
+					pass.Report(diag)
+				}
+			}
 		}
 	}
-
 	return nil, nil
-}
-
-func strInPrefixList(str string, prefixList []string) bool {
-	// Idx represents where in the prefix slice the passed in string would go
-	// when sorted. -1 Just means that it would be at the very front of the slice.
-	idx := sort.Search(len(prefixList), func(i int) bool {
-		return prefixList[i] > str
-	}) - 1
-	// This means that the string passed in has no way to be prefixed by anything
-	// in the prefix list as it is already smaller then everything
-	if idx == -1 {
-		return false
-	}
-	return strings.HasPrefix(str, prefixList[idx])
-}
-
-func strInGlobList(str string, globList []glob.Glob) bool {
-	for _, g := range globList {
-		if g.Match(str) {
-			return true
-		}
-	}
-	return false
 }
 
 func rawBasicLit(lit *ast.BasicLit) string {

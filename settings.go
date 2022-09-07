@@ -121,6 +121,25 @@ func (l *List) compile() (*list, error) {
 	return li, nil
 }
 
+func (l *list) fileMatch(fileName string) bool {
+	inAllowed := len(l.files) == 0 || strInGlobList(fileName, l.files)
+	inDenied := strInGlobList(fileName, l.negFiles)
+	return inAllowed && !inDenied
+}
+
+func (l *list) importAllowed(imp string) (bool, string) {
+	inAllowed := len(l.allow) == 0
+	if !inAllowed {
+		inAllowed, _ = strInPrefixList(imp, l.allow)
+	}
+	inDenied, suggIdx := strInPrefixList(imp, l.deny)
+	sugg := ""
+	if inDenied && suggIdx != -1 {
+		sugg = l.suggestions[suggIdx]
+	}
+	return inAllowed && !inDenied, sugg
+}
+
 type LinterSettings map[string]*List
 
 type linterSettings []*list
@@ -129,6 +148,7 @@ func (l LinterSettings) compile() (linterSettings, error) {
 	if len(l) == 0 {
 		// Only allow $gostd in all files
 		set := &List{
+			Files: []string{"$all"},
 			Allow: []string{"$gostd"},
 		}
 		li, err := set.compile()
@@ -162,4 +182,37 @@ func (l LinterSettings) compile() (linterSettings, error) {
 	}
 
 	return li, nil
+}
+
+func (ls linterSettings) whichLists(fileName string) []*list {
+	var matches []*list
+	for _, l := range ls {
+		if l.fileMatch(fileName) {
+			matches = append(matches, l)
+		}
+	}
+	return matches
+}
+
+func strInGlobList(str string, globList []glob.Glob) bool {
+	for _, g := range globList {
+		if g.Match(str) {
+			return true
+		}
+	}
+	return false
+}
+
+func strInPrefixList(str string, prefixList []string) (bool, int) {
+	// Idx represents where in the prefix slice the passed in string would go
+	// when sorted. -1 Just means that it would be at the very front of the slice.
+	idx := sort.Search(len(prefixList), func(i int) bool {
+		return prefixList[i] > str
+	}) - 1
+	// This means that the string passed in has no way to be prefixed by anything
+	// in the prefix list as it is already smaller then everything
+	if idx == -1 {
+		return false, idx
+	}
+	return strings.HasPrefix(str, prefixList[idx]), idx
 }
