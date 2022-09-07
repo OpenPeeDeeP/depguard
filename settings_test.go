@@ -2,6 +2,8 @@ package depguard
 
 import (
 	"errors"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -174,7 +176,10 @@ var (
 				{
 					name:     "Main",
 					listMode: lmAllow,
-					allow:    []string{"FIND ME", "FIND ME TOO"},
+					files: []glob.Glob{
+						glob.MustCompile("**/*.go", '/'),
+					},
+					allow: []string{"FIND ME", "FIND ME TOO"},
 				},
 			},
 		},
@@ -264,7 +269,6 @@ func init() {
 	// Only doing this so I have a controlled list of expansions for packages
 	utils.PackageExpandable["$gostd"] = &expanderTest{}
 }
-
 func TestListCompile(t *testing.T) {
 	for _, s := range listCompileScenarios {
 		t.Run(s.name, testListCompile(s))
@@ -274,5 +278,342 @@ func TestListCompile(t *testing.T) {
 func TestLinterSettingsCompile(t *testing.T) {
 	for _, s := range settingsCompileScenarios {
 		t.Run(s.name, testSettingsCompile(s))
+	}
+}
+
+var (
+	prefixList = []string{
+		"some/package/a",
+		"some/package/b",
+		"some/package/c/",
+		"some/pkg/c",
+		"some/pkg/d",
+		"some/pkg/e",
+	}
+
+	globList = []glob.Glob{
+		glob.MustCompile("some/*/a", '/'),
+		glob.MustCompile("some/**/a", '/'),
+	}
+)
+
+func testStrInPrefixList(str string, expect bool, expectedIdx int) func(t *testing.T) {
+	return func(t *testing.T) {
+		act, idx := strInPrefixList(str, prefixList)
+		if act != expect {
+			t.Errorf("string prefix mismatch: expected %s - got %s", strconv.FormatBool(expect), strconv.FormatBool(act))
+		}
+		if idx != expectedIdx {
+			t.Errorf("string prefix index: expected %d - got %d", expectedIdx, idx)
+		}
+	}
+}
+
+func TestStrInPrefixList(t *testing.T) {
+	sort.Strings(prefixList)
+	t.Run("full_match_start", testStrInPrefixList("some/package/a", true, 0))
+	t.Run("full_match", testStrInPrefixList("some/package/b", true, 1))
+	t.Run("full_match_end", testStrInPrefixList("some/pkg/e", true, 5))
+	t.Run("no_match_end", testStrInPrefixList("zome/pkg/e", false, 5))
+	t.Run("no_match_start", testStrInPrefixList("aome/pkg/e", false, -1))
+	t.Run("match_start", testStrInPrefixList("some/package/a/files", true, 0))
+	t.Run("match_middle", testStrInPrefixList("some/pkg/c/files", true, 3))
+	t.Run("match_end", testStrInPrefixList("some/pkg/e/files", true, 5))
+	t.Run("no_match_trailing", testStrInPrefixList("some/package/c", false, 1))
+}
+
+func testStrInGlobList(str string, expect bool) func(t *testing.T) {
+	return func(t *testing.T) {
+		if strInGlobList(str, globList) != expect {
+			t.Fail()
+		}
+	}
+}
+
+func TestStrInGlobList(t *testing.T) {
+	t.Run("match_first", testStrInGlobList("some/foo/a", true))
+	t.Run("match", testStrInGlobList("some/foo/bar/a", true))
+	t.Run("no_match", testStrInGlobList("some/foo/b", false))
+}
+
+type listFileMatchScenario struct {
+	name  string
+	setup *list
+	tests []*listFileMatchScenarioInner
+}
+type listFileMatchScenarioInner struct {
+	name     string
+	input    string
+	expected bool
+}
+
+var listFileMatchScenarios = []*listFileMatchScenario{
+	{
+		name:  "Empty lists matches everything",
+		setup: &list{},
+		tests: []*listFileMatchScenarioInner{
+			{
+				name:     "go files",
+				input:    "foo/somefile.go",
+				expected: true,
+			},
+			{
+				name:     "test go files",
+				input:    "foo/somefile_test.go",
+				expected: true,
+			},
+			{
+				name:     "not a go file",
+				input:    "foo/somefile_test.file",
+				expected: true,
+			},
+		},
+	},
+	{
+		name: "Empty allow matches anything not in deny",
+		setup: &list{
+			negFiles: []glob.Glob{
+				glob.MustCompile("**/*_test.go", '/'),
+			},
+		},
+		tests: []*listFileMatchScenarioInner{
+			{
+				name:     "not in deny",
+				input:    "foo/somefile.go",
+				expected: true,
+			},
+			{
+				name:     "in deny",
+				input:    "foo/somefile_test.go",
+				expected: false,
+			},
+			{
+				name:     "not a go file",
+				input:    "foo/somefile_test.file",
+				expected: true,
+			},
+		},
+	},
+	{
+		name: "Empty deny only matches what is in allowed",
+		setup: &list{
+			files: []glob.Glob{
+				glob.MustCompile("**/*_test.go", '/'),
+			},
+		},
+		tests: []*listFileMatchScenarioInner{
+			{
+				name:     "not in allow",
+				input:    "foo/somefile.go",
+				expected: false,
+			},
+			{
+				name:     "in allow",
+				input:    "foo/somefile_test.go",
+				expected: true,
+			},
+			{
+				name:     "not a go file",
+				input:    "foo/somefile_test.file",
+				expected: false,
+			},
+		},
+	},
+	{
+		name: "Both only allows what is in allow and not in deny",
+		setup: &list{
+			files: []glob.Glob{
+				glob.MustCompile("**/*.go", '/'),
+			},
+			negFiles: []glob.Glob{
+				glob.MustCompile("**/*_test.go", '/'),
+			},
+		},
+		tests: []*listFileMatchScenarioInner{
+			{
+				name:     "in allow but not deny",
+				input:    "foo/somefile.go",
+				expected: true,
+			},
+			{
+				name:     "in allow and in deny",
+				input:    "foo/somefile_test.go",
+				expected: false,
+			},
+			{
+				name:     "in neither allow or deny",
+				input:    "foo/somefile_test.file",
+				expected: false,
+			},
+		},
+	},
+}
+
+func TestListFileMatch(t *testing.T) {
+	for _, s := range listFileMatchScenarios {
+		t.Run(s.name, func(ts *testing.T) {
+			for _, sc := range s.tests {
+				ts.Run(sc.name, func(tst *testing.T) {
+					act := s.setup.fileMatch(sc.input)
+					if act != sc.expected {
+						tst.Error("Did not return expected result")
+					}
+				})
+			}
+		})
+	}
+}
+
+type listImportAllowedScenario struct {
+	name  string
+	setup *list
+	tests []*listImportAllowedScenarioInner
+}
+
+type listImportAllowedScenarioInner struct {
+	name       string
+	input      string
+	expected   bool
+	suggestion string
+}
+
+var listImportAllowedScenarios = []*listImportAllowedScenario{
+	{
+		name: "Empty allow matches anything not in deny",
+		setup: &list{
+			deny:        []string{"some/pkg/a"},
+			suggestions: []string{"because I said so"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:       "in deny",
+				input:      "some/pkg/a/bar",
+				expected:   false,
+				suggestion: "because I said so",
+			},
+			{
+				name:     "not in deny",
+				input:    "some/pkg/b/foo/bar",
+				expected: true,
+			},
+		},
+	},
+	{
+		name: "Empty deny only matches what is in allow",
+		setup: &list{
+			allow: []string{"some/pkg/a"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:     "in allow",
+				input:    "some/pkg/a/bar",
+				expected: true,
+			},
+			{
+				name:     "not in allow",
+				input:    "some/pkg/b/foo/bar",
+				expected: false,
+			},
+		},
+	},
+	{
+		name: "Both only allows what is in allow and not in deny",
+		setup: &list{
+			allow:       []string{"some/pkg/a"},
+			deny:        []string{"some/pkg/a/foo"},
+			suggestions: []string{"because I said so"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:     "in allow but not in deny",
+				input:    "some/pkg/a/bar",
+				expected: true,
+			},
+			{
+				name:       "in allow and in deny",
+				input:      "some/pkg/a/foo/bar",
+				expected:   false,
+				suggestion: "because I said so",
+			},
+			{
+				name:     "not in allow nor in deny",
+				input:    "some/pkg/b/foo/bar",
+				expected: false,
+			},
+		},
+	},
+}
+
+func TestListImportAllowed(t *testing.T) {
+	for _, s := range listImportAllowedScenarios {
+		t.Run(s.name, func(ts *testing.T) {
+			for _, sc := range s.tests {
+				ts.Run(sc.name, func(tst *testing.T) {
+					act, sugg := s.setup.importAllowed(sc.input)
+					if act != sc.expected {
+						tst.Error("Did not return expected result")
+					}
+					if sugg != sc.suggestion {
+						tst.Errorf("Suggestion didn't match expected: Exp %s: Act: %s", sc.suggestion, sugg)
+					}
+				})
+			}
+		})
+	}
+
+}
+
+type linterSettingsWhichListsScenario struct {
+	name     string
+	input    string
+	expected []string
+}
+
+var linterSettingsWhichListsSetup = linterSettings{
+	{
+		name: "Main",
+		files: []glob.Glob{
+			glob.MustCompile("**/*.go", '/'),
+		},
+	},
+	{
+		name: "Test",
+		files: []glob.Glob{
+			glob.MustCompile("**/*_test.go", '/'),
+		},
+	},
+}
+
+var linterSettingsWhichListsScenarios = []*linterSettingsWhichListsScenario{
+	{
+		name:     "return none",
+		input:    "some/randome.file",
+		expected: []string{},
+	},
+	{
+		name:     "return single",
+		input:    "some/random.go",
+		expected: []string{"Main"},
+	},
+	{
+		name:     "return multiple",
+		input:    "some/random_test.go",
+		expected: []string{"Main", "Test"},
+	},
+}
+
+func TestLinterSettingsWhichLists(t *testing.T) {
+	for _, s := range linterSettingsWhichListsScenarios {
+		t.Run(s.name, func(ts *testing.T) {
+			act := linterSettingsWhichListsSetup.whichLists(s.input)
+			if len(act) != len(s.expected) {
+				ts.Fatal("List is not of expected length")
+			}
+			for i, a := range act {
+				if a.name != s.expected[i] {
+					t.Errorf("List at index %d is not named %s but instead is %s", i, s.expected[i], a.name)
+				}
+			}
+		})
 	}
 }
