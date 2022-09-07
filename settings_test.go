@@ -44,7 +44,6 @@ var (
 				},
 			},
 			exp: &list{
-				listMode:    lmMixed,
 				allow:       []string{"os"},
 				deny:        []string{"reflect"},
 				suggestions: []string{"Don't use Reflect"},
@@ -60,8 +59,7 @@ var (
 				files: []glob.Glob{
 					glob.MustCompile("**/*.go", '/'),
 				},
-				listMode: lmAllow,
-				allow:    []string{"os"},
+				allow: []string{"os"},
 			},
 		},
 		{
@@ -74,8 +72,7 @@ var (
 				negFiles: []glob.Glob{
 					glob.MustCompile("**/*_test.go", '/'),
 				},
-				listMode: lmAllow,
-				allow:    []string{"os"},
+				allow: []string{"os"},
 			},
 		},
 		{
@@ -91,8 +88,7 @@ var (
 				negFiles: []glob.Glob{
 					glob.MustCompile("**/bar.go", '/'),
 				},
-				listMode: lmAllow,
-				allow:    []string{"os"},
+				allow: []string{"os"},
 			},
 		},
 		{
@@ -108,8 +104,7 @@ var (
 				Allow: []string{"$gostd"},
 			},
 			exp: &list{
-				listMode: lmAllow,
-				allow:    []string{"FIND ME", "FIND ME TOO"},
+				allow: []string{"FIND ME", "FIND ME TOO"},
 			},
 		},
 		{
@@ -118,7 +113,6 @@ var (
 				Deny: map[string]string{"$gostd": "Don't use standard"},
 			},
 			exp: &list{
-				listMode:    lmDeny,
 				deny:        []string{"FIND ME", "FIND ME TOO"},
 				suggestions: []string{"Don't use standard", "Don't use standard"},
 			},
@@ -131,7 +125,6 @@ var (
 				},
 			},
 			exp: &list{
-				listMode:    lmDeny,
 				deny:        []string{"reflect"},
 				suggestions: []string{"Don't use Reflect"},
 			},
@@ -142,8 +135,7 @@ var (
 				Allow: []string{"os"},
 			},
 			exp: &list{
-				listMode: lmAllow,
-				allow:    []string{"os"},
+				allow: []string{"os"},
 			},
 		},
 		{
@@ -162,7 +154,6 @@ var (
 				negFiles: []glob.Glob{
 					glob.MustCompile("**/*_test.go", '/'),
 				},
-				listMode:    lmMixed,
 				allow:       []string{"os"},
 				deny:        []string{"reflect"},
 				suggestions: []string{"Don't use Reflect"},
@@ -174,8 +165,7 @@ var (
 			name: "Zero State",
 			exp: []*list{
 				{
-					name:     "Main",
-					listMode: lmAllow,
+					name: "Main",
 					files: []glob.Glob{
 						glob.MustCompile("**/*.go", '/'),
 					},
