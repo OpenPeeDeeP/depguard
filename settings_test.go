@@ -286,6 +286,7 @@ var (
 		"some/package/a",
 		"some/package/b",
 		"some/package/c/",
+		"some/package/d$",
 		"some/pkg/c",
 		"some/pkg/d",
 		"some/pkg/e",
@@ -313,13 +314,15 @@ func TestStrInPrefixList(t *testing.T) {
 	sort.Strings(prefixList)
 	t.Run("full_match_start", testStrInPrefixList("some/package/a", true, 0))
 	t.Run("full_match", testStrInPrefixList("some/package/b", true, 1))
-	t.Run("full_match_end", testStrInPrefixList("some/pkg/e", true, 5))
-	t.Run("no_match_end", testStrInPrefixList("zome/pkg/e", false, 5))
+	t.Run("full_match_end", testStrInPrefixList("some/pkg/e", true, 6))
+	t.Run("no_match_end", testStrInPrefixList("zome/pkg/e", false, 6))
 	t.Run("no_match_start", testStrInPrefixList("aome/pkg/e", false, -1))
 	t.Run("match_start", testStrInPrefixList("some/package/a/files", true, 0))
-	t.Run("match_middle", testStrInPrefixList("some/pkg/c/files", true, 3))
-	t.Run("match_end", testStrInPrefixList("some/pkg/e/files", true, 5))
+	t.Run("match_middle", testStrInPrefixList("some/pkg/c/files", true, 4))
+	t.Run("match_end", testStrInPrefixList("some/pkg/e/files", true, 6))
 	t.Run("no_match_trailing", testStrInPrefixList("some/package/c", false, 1))
+	t.Run("match_exact", testStrInPrefixList("some/package/d", true, 3))
+	t.Run("no_prefix_match_exact", testStrInPrefixList("some/package/d/something", false, 3))
 }
 
 func testStrInGlobList(str string, expect bool) func(t *testing.T) {
@@ -481,8 +484,8 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	{
 		name: "Empty allow matches anything not in deny",
 		setup: &list{
-			deny:        []string{"some/pkg/a"},
-			suggestions: []string{"because I said so"},
+			deny:        []string{"some/pkg/a", "some/pkg/b$"},
+			suggestions: []string{"because I said so", "please use newer version"},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -492,16 +495,22 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 				suggestion: "because I said so",
 			},
 			{
-				name:     "not in deny",
+				name:     "not in deny suffixed by exact match",
 				input:    "some/pkg/b/foo/bar",
 				expected: true,
+			},
+			{
+				name:       "in deny exact match",
+				input:      "some/pkg/b",
+				expected:   false,
+				suggestion: "please use newer version",
 			},
 		},
 	},
 	{
 		name: "Empty deny only matches what is in allow",
 		setup: &list{
-			allow: []string{"some/pkg/a"},
+			allow: []string{"some/pkg/a", "some/pkg/b$"},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -510,9 +519,14 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 				expected: true,
 			},
 			{
-				name:     "not in allow",
+				name:     "not in allow suffixed by exact match",
 				input:    "some/pkg/b/foo/bar",
 				expected: false,
+			},
+			{
+				name:     "in allow exact match",
+				input:    "some/pkg/b",
+				expected: true,
 			},
 		},
 	},

@@ -207,12 +207,16 @@ func strInPrefixList(str string, prefixList []string) (bool, int) {
 	// Idx represents where in the prefix slice the passed in string would go
 	// when sorted. -1 Just means that it would be at the very front of the slice.
 	idx := sort.Search(len(prefixList), func(i int) bool {
-		return prefixList[i] > str
+		return strings.TrimRight(prefixList[i], "$") > str
 	}) - 1
 	// This means that the string passed in has no way to be prefixed by anything
 	// in the prefix list as it is already smaller then everything
 	if idx == -1 {
 		return false, idx
+	}
+	ioc := prefixList[idx]
+	if ioc[len(ioc)-1] == '$' {
+		return str == ioc[:len(ioc)-1], idx
 	}
 	return strings.HasPrefix(str, prefixList[idx]), idx
 }
