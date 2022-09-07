@@ -1,4 +1,4 @@
-module github.com/OpenPeeDeeP/depguard/v2/cmd/depguard
+module github.com/OpenPeeDeeP/depguard/cmd/depguard/v2
 
 go 1.17
 
