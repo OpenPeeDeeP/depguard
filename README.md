@@ -98,7 +98,7 @@ and any sub-package of it.
 Main:
   files:
   - $all
-  - !$test
+  - "!$test"
   allow:
   - $gostd
   deny:
