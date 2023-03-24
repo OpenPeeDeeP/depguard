@@ -9,7 +9,7 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.2.1
-	github.com/google/go-cmp v0.5.8
+	github.com/google/go-cmp v0.5.9
 	gopkg.in/yaml.v3 v3.0.1
 )
 
