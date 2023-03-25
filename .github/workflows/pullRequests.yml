@@ -6,7 +6,7 @@ on:
       - v2
   pull_request:
     types:
-     - opened
+      - opened
     branches:
       - v2
 
@@ -15,7 +15,7 @@ permissions:
   pull-requests: read
 
 env:
-  GO_VERSION: 1.17
+  GO_VERSION: 1.20
 
 jobs:
   build:
@@ -24,20 +24,20 @@ jobs:
         dir: [".", "cmd/depguard"]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
-    - name: Build
-      run: go build -v ./...
-      working-directory: ${{ matrix.dir }}
+      - name: Build
+        run: go build -v ./...
+        working-directory: ${{ matrix.dir }}
 
-    - name: Test
-      run: go test -v ./...
-      working-directory: ${{ matrix.dir }}
+      - name: Test
+        run: go test -v ./...
+        working-directory: ${{ matrix.dir }}
 
   lint:
     strategy:
@@ -45,14 +45,14 @@ jobs:
         dir: [".", "cmd/depguard"]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ env.GO_VERSION }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
-    - name: Lint
-      uses: golangci/golangci-lint-action@v3
-      with:
-        working-directory: ${{ matrix.dir }}
+      - name: Lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          working-directory: ${{ matrix.dir }}

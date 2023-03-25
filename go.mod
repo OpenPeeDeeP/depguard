@@ -1,6 +1,6 @@
 module github.com/OpenPeeDeeP/depguard/v2
 
-go 1.17
+go 1.20
 
 require (
 	github.com/gobwas/glob v0.2.3
