@@ -21,7 +21,7 @@ func NewAnalyzer(settings *LinterSettings) (*analysis.Analyzer, error) {
 
 func newAnalyzer(settings linterSettings) *analysis.Analyzer {
 	return &analysis.Analyzer{
-		Name:             "Debguard",
+		Name:             "depguard",
 		Doc:              "Go linter that checks if package imports are in a list of acceptable packages",
 		Run:              settings.run,
 		RunDespiteErrors: false,
