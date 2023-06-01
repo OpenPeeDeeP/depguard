@@ -2,9 +2,12 @@ package utils
 
 import (
 	"fmt"
-	"go/build"
 	"os"
+	"os/exec"
 	"path"
+	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 type Expander interface {
@@ -45,7 +48,7 @@ func (e *gostdExpander) Expand() ([]string, error) {
 	if len(e.cache) != 0 {
 		return e.cache, nil
 	}
-	root := path.Join(build.Default.GOROOT, "src")
+	root := path.Join(findGOROOT(), "src")
 	fs, err := os.ReadDir(root)
 	if err != nil {
 		return nil, fmt.Errorf("could not read GOROOT directory: %w", err)
@@ -59,6 +62,24 @@ func (e *gostdExpander) Expand() ([]string, error) {
 	}
 	e.cache = pkgPrefix
 	return pkgPrefix, nil
+}
+
+func findGOROOT() string {
+	// code borrowed from https://github.com/golang/tools/blob/86c93e8732cce300d0270bce23117456ce92bb17/cmd/godoc/goroot.go#L15-L30
+	if env := os.Getenv("GOROOT"); env != "" {
+		return filepath.Clean(env)
+	}
+	def := filepath.Clean(runtime.GOROOT())
+	if runtime.Compiler == "gccgo" {
+		// gccgo has no real GOROOT, and it certainly doesn't
+		// depend on the executable's location.
+		return def
+	}
+	out, err := exec.Command("go", "env", "GOROOT").Output()
+	if err != nil {
+		return def
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func ExpandSlice(sl []string, exp ExpanderMap) ([]string, error) {
