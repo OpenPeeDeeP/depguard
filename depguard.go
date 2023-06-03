@@ -9,21 +9,58 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// NewAnalyzer creates a new analyzer from the settings passed in
+// NewAnalyzer creates a new analyzer from the settings passed in.
+// This can fail if the passed in LinterSettings does not compile.
+// Use NewUncompiledAnalyzer if you need control when the compile happens.
 func NewAnalyzer(settings *LinterSettings) (*analysis.Analyzer, error) {
 	s, err := settings.compile()
 	if err != nil {
 		return nil, err
 	}
-	analyzer := newAnalyzer(s)
+	analyzer := newAnalyzer(s.run)
 	return analyzer, nil
 }
 
-func newAnalyzer(settings linterSettings) *analysis.Analyzer {
+type UncompiledAnalyzer struct {
+	Analyzer *analysis.Analyzer
+	settings *LinterSettings
+}
+
+// NewUncompiledAnalyzer creates a new analyzer from the settings passed in.
+// This can never error unlike NewAnalyzer.
+// It is advised to call the Compile method on the returned Analyzer before running.
+func NewUncompiledAnalyzer(settings *LinterSettings) *UncompiledAnalyzer {
+	return &UncompiledAnalyzer{
+		Analyzer: newAnalyzer(settings.run),
+		settings: settings,
+	}
+}
+
+// Compile the settings ahead of time so each subsuquent run of the analyzer doesn't
+// need to do this work.
+func (ua *UncompiledAnalyzer) Compile() error {
+	s, err := ua.settings.compile()
+	if err != nil {
+		return err
+	}
+	ua.Analyzer.Run = s.run
+	return nil
+}
+
+func (settings LinterSettings) run(pass *analysis.Pass) (interface{}, error) {
+	s, err := settings.compile()
+	if err != nil {
+		return nil, err
+	}
+	return s.run(pass)
+}
+
+func newAnalyzer(run func(*analysis.Pass) (interface{}, error)) *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name:             "depguard",
 		Doc:              "Go linter that checks if package imports are in a list of acceptable packages",
-		Run:              settings.run,
+		URL:              "https://github.com/OpenPeeDeeP/depguard",
+		Run:              run,
 		RunDespiteErrors: false,
 	}
 }
