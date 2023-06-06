@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/gobwas/glob v0.2.3
-	golang.org/x/tools v0.9.1
+	golang.org/x/tools v0.9.3
 )
 
 require (
