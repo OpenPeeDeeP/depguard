@@ -20,8 +20,8 @@ type list struct {
 	name        string
 	files       []glob.Glob
 	negFiles    []glob.Glob
-	allow       []string
-	deny        []string
+	allow       []glob.Glob
+	deny        []glob.Glob
 	suggestions []string
 }
 
@@ -65,11 +65,18 @@ func (l *List) compile() (*list, error) {
 		if err != nil {
 			errs = append(errs, err)
 		}
+		sort.Strings(l.Allow)
 
 		// Sort Allow
-		li.allow = make([]string, len(l.Allow))
-		copy(li.allow, l.Allow)
-		sort.Strings(li.allow)
+		li.allow = make([]glob.Glob, 0, len(l.Allow))
+		for _, pkg := range l.Allow {
+			glob, err := inputPatternToGlob(pkg)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			li.allow = append(li.allow, glob)
+		}
 	}
 
 	if l.Deny != nil {
@@ -80,18 +87,24 @@ func (l *List) compile() (*list, error) {
 		}
 
 		// Split Deny Into Package Slice
-		li.deny = make([]string, 0, len(l.Deny))
-		for pkg := range l.Deny {
-			li.deny = append(li.deny, pkg)
+
+		// sort before compiling as globs are opaque
+		pkgs := make([]string, 0, len(l.Deny))
+		for k := range l.Deny {
+			pkgs = append(pkgs, k)
 		}
+		sort.Strings(pkgs)
 
-		// Sort Deny
-		sort.Strings(li.deny)
-
-		// Populate Suggestions to match the Deny order
-		li.suggestions = make([]string, 0, len(li.deny))
-		for _, dp := range li.deny {
-			li.suggestions = append(li.suggestions, strings.TrimSpace(l.Deny[dp]))
+		li.deny = make([]glob.Glob, 0, len(pkgs))
+		li.suggestions = make([]string, 0, len(pkgs))
+		for _, pkg := range pkgs {
+			glob, err := inputPatternToGlob(pkg)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			li.deny = append(li.deny, glob)
+			li.suggestions = append(li.suggestions, strings.TrimSpace(l.Deny[pkg]))
 		}
 	}
 
@@ -107,17 +120,24 @@ func (l *List) compile() (*list, error) {
 }
 
 func (l *list) fileMatch(fileName string) bool {
-	inAllowed := len(l.files) == 0 || strInGlobList(fileName, l.files)
-	inDenied := strInGlobList(fileName, l.negFiles)
-	return inAllowed && !inDenied
+	inDenied, _ := strInGlobList(fileName, l.negFiles)
+	if inDenied {
+		return false
+	}
+	if len(l.files) == 0 {
+		// No allow list matches all
+		return true
+	}
+	inAllowed, _ := strInGlobList(fileName, l.files)
+	return inAllowed
 }
 
 func (l *list) importAllowed(imp string) (bool, string) {
 	inAllowed := len(l.allow) == 0
 	if !inAllowed {
-		inAllowed, _ = strInPrefixList(imp, l.allow)
+		inAllowed, _ = strInGlobList(imp, l.allow)
 	}
-	inDenied, suggIdx := strInPrefixList(imp, l.deny)
+	inDenied, suggIdx := strInGlobList(imp, l.deny)
 	sugg := ""
 	if inDenied && suggIdx != -1 {
 		sugg = l.suggestions[suggIdx]
@@ -179,29 +199,22 @@ func (ls linterSettings) whichLists(fileName string) []*list {
 	return matches
 }
 
-func strInGlobList(str string, globList []glob.Glob) bool {
-	for _, g := range globList {
+func strInGlobList(str string, globList []glob.Glob) (bool, int) {
+	for idx, g := range globList {
 		if g.Match(str) {
-			return true
+			return true, idx
 		}
 	}
-	return false
+	return false, 0
 }
 
-func strInPrefixList(str string, prefixList []string) (bool, int) {
-	// Idx represents where in the prefix slice the passed in string would go
-	// when sorted. -1 Just means that it would be at the very front of the slice.
-	idx := sort.Search(len(prefixList), func(i int) bool {
-		return strings.TrimRight(prefixList[i], "$") > str
-	}) - 1
-	// This means that the string passed in has no way to be prefixed by anything
-	// in the prefix list as it is already smaller then everything
-	if idx == -1 {
-		return false, idx
+func inputPatternToGlob(pattern string) (glob.Glob, error) {
+	lastIdx := len(pattern) - 1
+	if pattern[lastIdx] == '$' {
+		pattern = pattern[:lastIdx]
+	} else {
+		pattern += "**"
 	}
-	ioc := prefixList[idx]
-	if ioc[len(ioc)-1] == '$' {
-		return str == ioc[:len(ioc)-1], idx
-	}
-	return strings.HasPrefix(str, prefixList[idx]), idx
+	return glob.Compile(pattern, '/')
+
 }

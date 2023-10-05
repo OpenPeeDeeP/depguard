@@ -2,8 +2,6 @@ package depguard
 
 import (
 	"errors"
-	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -26,6 +24,18 @@ type settingsCompileScenario struct {
 	expErr   error
 }
 
+func toGlobList(patterns ...string) []glob.Glob {
+	ret := make([]glob.Glob, len(patterns))
+	for idx, pattern := range patterns {
+		glob, err := inputPatternToGlob(pattern)
+		if err != nil {
+			panic(err)
+		}
+		ret[idx] = glob
+	}
+	return ret
+}
+
 var (
 	listCompileScenarios = []*listCompileScenario{
 		{
@@ -38,15 +48,16 @@ var (
 		{
 			name: "No Files",
 			list: &List{
-				Allow: []string{"os"},
+				Allow: []string{"os", "example.com/*/pkg"},
 				Deny: map[string]string{
-					"reflect": "Don't use Reflect",
+					"reflect":             "Don't use Reflect",
+					"example.com/**/test": "Don't use test code",
 				},
 			},
 			exp: &list{
-				allow:       []string{"os"},
-				deny:        []string{"reflect"},
-				suggestions: []string{"Don't use Reflect"},
+				allow:       toGlobList("example.com/*/pkg", "os"),
+				deny:        toGlobList("example.com/**/test", "reflect"),
+				suggestions: []string{"Don't use test code", "Don't use Reflect"},
 			},
 		},
 		{
@@ -59,7 +70,7 @@ var (
 				files: []glob.Glob{
 					glob.MustCompile("**/*.go", '/'),
 				},
-				allow: []string{"os"},
+				allow: toGlobList("os"),
 			},
 		},
 		{
@@ -72,7 +83,7 @@ var (
 				negFiles: []glob.Glob{
 					glob.MustCompile("**/*_test.go", '/'),
 				},
-				allow: []string{"os"},
+				allow: toGlobList("os"),
 			},
 		},
 		{
@@ -88,7 +99,7 @@ var (
 				negFiles: []glob.Glob{
 					glob.MustCompile("**/bar.go", '/'),
 				},
-				allow: []string{"os"},
+				allow: toGlobList("os"),
 			},
 		},
 		{
@@ -104,7 +115,7 @@ var (
 				Allow: []string{"$gostd"},
 			},
 			exp: &list{
-				allow: []string{"FIND ME", "FIND ME TOO"},
+				allow: toGlobList("FIND ME", "FIND ME TOO"),
 			},
 		},
 		{
@@ -113,7 +124,7 @@ var (
 				Deny: map[string]string{"$gostd": "Don't use standard"},
 			},
 			exp: &list{
-				deny:        []string{"FIND ME", "FIND ME TOO"},
+				deny:        toGlobList("FIND ME", "FIND ME TOO"),
 				suggestions: []string{"Don't use standard", "Don't use standard"},
 			},
 		},
@@ -125,7 +136,7 @@ var (
 				},
 			},
 			exp: &list{
-				deny:        []string{"reflect"},
+				deny:        toGlobList("reflect"),
 				suggestions: []string{"Don't use Reflect"},
 			},
 		},
@@ -135,7 +146,7 @@ var (
 				Allow: []string{"os"},
 			},
 			exp: &list{
-				allow: []string{"os"},
+				allow: toGlobList("os"),
 			},
 		},
 		{
@@ -154,8 +165,8 @@ var (
 				negFiles: []glob.Glob{
 					glob.MustCompile("**/*_test.go", '/'),
 				},
-				allow:       []string{"os"},
-				deny:        []string{"reflect"},
+				allow:       toGlobList("os"),
+				deny:        toGlobList("reflect"),
 				suggestions: []string{"Don't use Reflect"},
 			},
 		},
@@ -169,7 +180,7 @@ var (
 					files: []glob.Glob{
 						glob.MustCompile("**/*.go", '/'),
 					},
-					allow: []string{"FIND ME", "FIND ME TOO"},
+					allow: toGlobList("FIND ME", "FIND ME TOO"),
 				},
 			},
 		},
@@ -191,14 +202,14 @@ var (
 					files: []glob.Glob{
 						glob.MustCompile("**/*.go", '/'),
 					},
-					allow: []string{"os"},
+					allow: toGlobList("os"),
 				},
 				{
 					name: "Test",
 					files: []glob.Glob{
 						glob.MustCompile("**/*_test.go", '/'),
 					},
-					allow: []string{"os"},
+					allow: toGlobList("os"),
 				},
 			},
 		},
@@ -288,36 +299,9 @@ var (
 	}
 )
 
-func testStrInPrefixList(str string, expect bool, expectedIdx int) func(t *testing.T) {
-	return func(t *testing.T) {
-		act, idx := strInPrefixList(str, prefixList)
-		if act != expect {
-			t.Errorf("string prefix mismatch: expected %s - got %s", strconv.FormatBool(expect), strconv.FormatBool(act))
-		}
-		if idx != expectedIdx {
-			t.Errorf("string prefix index: expected %d - got %d", expectedIdx, idx)
-		}
-	}
-}
-
-func TestStrInPrefixList(t *testing.T) {
-	sort.Strings(prefixList)
-	t.Run("full_match_start", testStrInPrefixList("some/package/a", true, 0))
-	t.Run("full_match", testStrInPrefixList("some/package/b", true, 1))
-	t.Run("full_match_end", testStrInPrefixList("some/pkg/e", true, 6))
-	t.Run("no_match_end", testStrInPrefixList("zome/pkg/e", false, 6))
-	t.Run("no_match_start", testStrInPrefixList("aome/pkg/e", false, -1))
-	t.Run("match_start", testStrInPrefixList("some/package/a/files", true, 0))
-	t.Run("match_middle", testStrInPrefixList("some/pkg/c/files", true, 4))
-	t.Run("match_end", testStrInPrefixList("some/pkg/e/files", true, 6))
-	t.Run("no_match_trailing", testStrInPrefixList("some/package/c", false, 1))
-	t.Run("match_exact", testStrInPrefixList("some/package/d", true, 3))
-	t.Run("no_prefix_match_exact", testStrInPrefixList("some/package/d/something", false, 3))
-}
-
 func testStrInGlobList(str string, expect bool) func(t *testing.T) {
 	return func(t *testing.T) {
-		if strInGlobList(str, globList) != expect {
+		if found, _ := strInGlobList(str, globList); found != expect {
 			t.Fail()
 		}
 	}
@@ -474,7 +458,7 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	{
 		name: "Empty allow matches anything not in deny",
 		setup: &list{
-			deny:        []string{"some/pkg/a", "some/pkg/b$"},
+			deny:        toGlobList("some/pkg/a", "some/pkg/b$"),
 			suggestions: []string{"because I said so", "please use newer version"},
 		},
 		tests: []*listImportAllowedScenarioInner{
@@ -500,7 +484,7 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	{
 		name: "Empty deny only matches what is in allow",
 		setup: &list{
-			allow: []string{"some/pkg/a", "some/pkg/b$"},
+			allow: toGlobList("some/pkg/a", "some/pkg/b$"),
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -523,8 +507,8 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	{
 		name: "Both only allows what is in allow and not in deny",
 		setup: &list{
-			allow:       []string{"some/pkg/a"},
-			deny:        []string{"some/pkg/a/foo"},
+			allow:       toGlobList("some/pkg/a"),
+			deny:        toGlobList("some/pkg/a/foo"),
 			suggestions: []string{"because I said so"},
 		},
 		tests: []*listImportAllowedScenarioInner{

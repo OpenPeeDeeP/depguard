@@ -2,6 +2,7 @@ package utils
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -61,7 +62,7 @@ func TestGoStdExpander(t *testing.T) {
 		t.Fatal("expected more than 1 expansion")
 	}
 	// Just make sure a few are in there
-	if !contains(pre, "os") && !contains(pre, "strings") {
+	if !slices.Contains(pre, "os") && !slices.Contains(pre, "strings") {
 		t.Error("could not find some of the expected packages")
 	}
 }
@@ -196,13 +197,4 @@ func TestExpandMap(t *testing.T) {
 			t.Error("error string should contain the key that failed")
 		}
 	})
-}
-
-func contains(sl []string, str string) bool {
-	for _, s := range sl {
-		if s == str {
-			return true
-		}
-	}
-	return false
 }
