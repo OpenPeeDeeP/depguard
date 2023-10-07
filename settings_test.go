@@ -159,6 +159,48 @@ var (
 				suggestions: []string{"Don't use Reflect"},
 			},
 		},
+		{
+			name: "Strict Mode Default",
+			list: &List{
+				Allow: []string{"os"},
+				Deny: map[string]string{
+					"reflect": "Don't use Reflect",
+				},
+			},
+			exp: &list{
+				listMode:    listModeStrict,
+				allow:       []string{"os"},
+				deny:        []string{"reflect"},
+				suggestions: []string{"Don't use Reflect"},
+			},
+		},
+		{
+			name: "Set Strict Mode",
+			list: &List{
+				ListMode: "sTriCT",
+				Allow:    []string{"os"},
+				Deny: map[string]string{
+					"reflect": "Don't use Reflect",
+				},
+			},
+			exp: &list{
+				listMode:    listModeStrict,
+				allow:       []string{"os"},
+				deny:        []string{"reflect"},
+				suggestions: []string{"Don't use Reflect"},
+			},
+		},
+		{
+			name: "Unknown List Mode",
+			list: &List{
+				ListMode: "MiddleOut",
+				Allow:    []string{"os"},
+				Deny: map[string]string{
+					"reflect": "Don't use Reflect",
+				},
+			},
+			expErr: errors.New("MiddleOut is not a known list mode"),
+		},
 	}
 	settingsCompileScenarios = []*settingsCompileScenario{
 		{
@@ -259,6 +301,7 @@ func init() {
 	// Only doing this so I have a controlled list of expansions for packages
 	utils.PackageExpandable["$gostd"] = &expanderTest{}
 }
+
 func TestListCompile(t *testing.T) {
 	for _, s := range listCompileScenarios {
 		t.Run(s.name, testListCompile(s))
@@ -521,27 +564,45 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 		},
 	},
 	{
-		name: "Both only allows what is in allow and not in deny",
+		name: "Both in Strict mode allows what is in allow and not in deny",
 		setup: &list{
-			allow:       []string{"some/pkg/a"},
-			deny:        []string{"some/pkg/a/foo"},
-			suggestions: []string{"because I said so"},
+			listMode:    listModeStrict,
+			allow:       []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
+			deny:        []string{"some/pkg/a", "some/pkg/b/foo"},
+			suggestions: []string{"because I said so", "really don't use"},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
 				name:     "in allow but not in deny",
-				input:    "some/pkg/a/bar",
+				input:    "some/pkg/c/alpha",
 				expected: true,
 			},
 			{
-				name:       "in allow and in deny",
+				name:       "subpackage allowed but root denied",
 				input:      "some/pkg/a/foo/bar",
 				expected:   false,
 				suggestion: "because I said so",
 			},
 			{
+				name:       "subpackage not in allowed but root denied",
+				input:      "some/pkg/a/baz",
+				expected:   false,
+				suggestion: "because I said so",
+			},
+			{
+				name:       "subpackage denied but root allowed",
+				input:      "some/pkg/b/foo/bar",
+				expected:   false,
+				suggestion: "really don't use",
+			},
+			{
+				name:     "subpackage not denied but root allowed",
+				input:    "some/pkg/b/baz",
+				expected: true,
+			},
+			{
 				name:     "not in allow nor in deny",
-				input:    "some/pkg/b/foo/bar",
+				input:    "some/pkg/d/alpha",
 				expected: false,
 			},
 		},
@@ -564,7 +625,6 @@ func TestListImportAllowed(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 type linterSettingsWhichListsScenario struct {
