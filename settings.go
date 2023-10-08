@@ -11,12 +11,20 @@ import (
 )
 
 type List struct {
-	Files []string          `json:"files" yaml:"files" toml:"files" mapstructure:"files"`
-	Allow []string          `json:"allow" yaml:"allow" toml:"allow" mapstructure:"allow"`
-	Deny  map[string]string `json:"deny" yaml:"deny" toml:"deny" mapstructure:"deny"`
+	ListMode string            `json:"listMode" yaml:"listMode" toml:"listMode" mapstructure:"listMode"`
+	Files    []string          `json:"files" yaml:"files" toml:"files" mapstructure:"files"`
+	Allow    []string          `json:"allow" yaml:"allow" toml:"allow" mapstructure:"allow"`
+	Deny     map[string]string `json:"deny" yaml:"deny" toml:"deny" mapstructure:"deny"`
 }
 
+type listMode int
+
+const (
+	listModeStrict listMode = iota
+)
+
 type list struct {
+	listMode    listMode
 	name        string
 	files       []glob.Glob
 	negFiles    []glob.Glob
@@ -32,6 +40,16 @@ func (l *List) compile() (*list, error) {
 	li := &list{}
 	var errs utils.MultiError
 	var err error
+
+	// Determine List Mode
+	switch strings.ToLower(l.ListMode) {
+	case "":
+		li.listMode = listModeStrict
+	case "strict":
+		li.listMode = listModeStrict
+	default:
+		errs = append(errs, fmt.Errorf("%s is not a known list mode", l.ListMode))
+	}
 
 	// Compile Files
 	for _, f := range l.Files {
