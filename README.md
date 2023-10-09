@@ -12,8 +12,7 @@ go install github.com/OpenPeeDeeP/depguard@latest
 
 ## Config
 
-The Depguard binary looks for a file named `^\.?depguard\.(yaml|yml|json|toml)$` in the current
-current working directory. Examples include (`.depguard.yml` or `depguard.toml`).
+The Depguard binary looks for a file named `^\.?depguard\.(yaml|yml|json|toml)$` in the current working directory. Examples include (`.depguard.yml` or `depguard.toml`).
 
 The following is an example configuration file.
 
