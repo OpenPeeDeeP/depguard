@@ -24,6 +24,7 @@ The following is an example configuration file.
       "$all",
       "!$test"
     ],
+    "listMode": "Strict",
     "allow": [
       "$gostd",
       "github.com/OpenPeeDeeP"
@@ -36,6 +37,7 @@ The following is an example configuration file.
     "files": [
       "$test"
     ],
+    "listMode": "Lax",
     "deny": {
       "github.com/stretchr/testify": "Please use standard library for tests"
     }
@@ -48,6 +50,7 @@ the linter's output.
 - `files` - list of file globs that will match this list of settings to compare against
 - `allow` - list of allowed packages
 - `deny` - map of packages that are not allowed where the value is a suggestion
+= `listMode` - the mode to use for package matching
 
 Files are matched using [Globs](https://github.com/gobwas/glob). If the files 
 list is empty, then all files will match that list. Prefixing a file
@@ -66,6 +69,21 @@ of a package to specify it must be exact match only.
 A Prefix List just means that a package will match a value, if the value is a 
 prefix of the package. Example `github.com/OpenPeeDeeP/depguard` package will match
 a value of `github.com/OpenPeeDeeP` but won't match `github.com/OpenPeeDeeP/depguard/v2`.
+
+ListMode is used to determine the package matching priority. There are three
+different modes; Original, Strict, and Lax.
+
+Original is the original way that the package was written to use. It is not recommended
+to stay with this and is only here for backwards compatibility.
+
+Strict, at its roots, is everything is denied unless in allowed.
+
+Lax, at its roots, is everything is allowed unless it is denied.
+
+There are cases where a package can be matched in both the allow and denied lists.
+You may allow a subpackage but deny the root or vice versa. The `settings_tests.go` file
+has many scenarios listed out under `TestListImportAllowed`. These tests will stay
+up to date as features are added.
 
 ### Variables
 
