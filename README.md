@@ -73,7 +73,7 @@ to reduce repetition and tedious behaviors.
 
 #### File Variables
 
-> you can still use and exclamation mark `!` in front of a variable to say not to 
+> you can still use an exclamation mark `!` in front of a variable to say not to 
 use it. Example `!$test` will match any file that is not a go test file.
 
 - `$all` - matches all go files
