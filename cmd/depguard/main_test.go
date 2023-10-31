@@ -13,8 +13,9 @@ var testfiles embed.FS
 
 var expectedConfigStruct = &depguard.LinterSettings{
 	"main": &depguard.List{
-		Files: []string{"$all", "!$test"},
-		Allow: []string{"$gostd", "github.com/"},
+		ListMode: "Strict",
+		Files:    []string{"$all", "!$test"},
+		Allow:    []string{"$gostd", "github.com/"},
 		Deny: map[string]string{
 			"reflect":                "Who needs reflection",
 			"github.com/OpenPeeDeeP": "Use Something Else",

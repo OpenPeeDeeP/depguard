@@ -20,7 +20,9 @@ type List struct {
 type listMode int
 
 const (
-	listModeStrict listMode = iota
+	listModeOriginal listMode = iota
+	listModeStrict
+	listModeLax
 )
 
 type list struct {
@@ -44,9 +46,13 @@ func (l *List) compile() (*list, error) {
 	// Determine List Mode
 	switch strings.ToLower(l.ListMode) {
 	case "":
-		li.listMode = listModeStrict
+		li.listMode = listModeOriginal
+	case "original":
+		li.listMode = listModeOriginal
 	case "strict":
 		li.listMode = listModeStrict
+	case "lax":
+		li.listMode = listModeLax
 	default:
 		errs = append(errs, fmt.Errorf("%s is not a known list mode", l.ListMode))
 	}
@@ -131,16 +137,25 @@ func (l *list) fileMatch(fileName string) bool {
 }
 
 func (l *list) importAllowed(imp string) (bool, string) {
-	inAllowed := len(l.allow) == 0
-	if !inAllowed {
-		inAllowed, _ = strInPrefixList(imp, l.allow)
+	inAllowed, aIdx := strInPrefixList(imp, l.allow)
+	inDenied, dIdx := strInPrefixList(imp, l.deny)
+	var allowed bool
+	switch l.listMode {
+	case listModeOriginal:
+		inAllowed = len(l.allow) == 0 || inAllowed
+		allowed = inAllowed && !inDenied
+	case listModeStrict:
+		allowed = inAllowed && (!inDenied || len(l.allow[aIdx]) > len(l.deny[dIdx]))
+	case listModeLax:
+		allowed = !inDenied || (inAllowed && len(l.allow[aIdx]) > len(l.deny[dIdx]))
+	default:
+		allowed = false
 	}
-	inDenied, suggIdx := strInPrefixList(imp, l.deny)
 	sugg := ""
-	if inDenied && suggIdx != -1 {
-		sugg = l.suggestions[suggIdx]
+	if !allowed && inDenied && dIdx != -1 {
+		sugg = l.suggestions[dIdx]
 	}
-	return inAllowed && !inDenied, sugg
+	return allowed, sugg
 }
 
 type LinterSettings map[string]*List

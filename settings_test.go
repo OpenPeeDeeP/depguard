@@ -160,9 +160,41 @@ var (
 			},
 		},
 		{
-			name: "Strict Mode Default",
+			name: "Original Mode Default",
 			list: &List{
 				Allow: []string{"os"},
+				Deny: map[string]string{
+					"reflect": "Don't use Reflect",
+				},
+			},
+			exp: &list{
+				listMode:    listModeOriginal,
+				allow:       []string{"os"},
+				deny:        []string{"reflect"},
+				suggestions: []string{"Don't use Reflect"},
+			},
+		},
+		{
+			name: "Set Original Mode",
+			list: &List{
+				ListMode: "oRiGinal",
+				Allow:    []string{"os"},
+				Deny: map[string]string{
+					"reflect": "Don't use Reflect",
+				},
+			},
+			exp: &list{
+				listMode:    listModeOriginal,
+				allow:       []string{"os"},
+				deny:        []string{"reflect"},
+				suggestions: []string{"Don't use Reflect"},
+			},
+		},
+		{
+			name: "Set Strict Mode",
+			list: &List{
+				ListMode: "sTrIct",
+				Allow:    []string{"os"},
 				Deny: map[string]string{
 					"reflect": "Don't use Reflect",
 				},
@@ -175,16 +207,16 @@ var (
 			},
 		},
 		{
-			name: "Set Strict Mode",
+			name: "Set Lax Mode",
 			list: &List{
-				ListMode: "sTriCT",
+				ListMode: "lAx",
 				Allow:    []string{"os"},
 				Deny: map[string]string{
 					"reflect": "Don't use Reflect",
 				},
 			},
 			exp: &list{
-				listMode:    listModeStrict,
+				listMode:    listModeLax,
 				allow:       []string{"os"},
 				deny:        []string{"reflect"},
 				suggestions: []string{"Don't use Reflect"},
@@ -509,13 +541,13 @@ type listImportAllowedScenario struct {
 type listImportAllowedScenarioInner struct {
 	name       string
 	input      string
-	expected   bool
+	allowed    bool
 	suggestion string
 }
 
 var listImportAllowedScenarios = []*listImportAllowedScenario{
 	{
-		name: "Empty allow matches anything not in deny",
+		name: "Empty allow in Original matches anything not in deny",
 		setup: &list{
 			deny:        []string{"some/pkg/a", "some/pkg/b$"},
 			suggestions: []string{"because I said so", "please use newer version"},
@@ -524,42 +556,148 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 			{
 				name:       "in deny",
 				input:      "some/pkg/a/bar",
-				expected:   false,
+				allowed:    false,
 				suggestion: "because I said so",
 			},
 			{
-				name:     "not in deny suffixed by exact match",
-				input:    "some/pkg/b/foo/bar",
-				expected: true,
+				name:    "not in deny suffixed by exact match",
+				input:   "some/pkg/b/foo/bar",
+				allowed: true,
 			},
 			{
 				name:       "in deny exact match",
 				input:      "some/pkg/b",
-				expected:   false,
+				allowed:    false,
 				suggestion: "please use newer version",
 			},
 		},
 	},
 	{
-		name: "Empty deny only matches what is in allow",
+		name: "Empty deny in Original only matches what is in allow",
 		setup: &list{
 			allow: []string{"some/pkg/a", "some/pkg/b$"},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
-				name:     "in allow",
-				input:    "some/pkg/a/bar",
-				expected: true,
+				name:    "in allow",
+				input:   "some/pkg/a/bar",
+				allowed: true,
 			},
 			{
-				name:     "not in allow suffixed by exact match",
-				input:    "some/pkg/b/foo/bar",
-				expected: false,
+				name:    "not in allow suffixed by exact match",
+				input:   "some/pkg/b/foo/bar",
+				allowed: false,
 			},
 			{
-				name:     "in allow exact match",
-				input:    "some/pkg/b",
-				expected: true,
+				name:    "in allow exact match",
+				input:   "some/pkg/b",
+				allowed: true,
+			},
+		},
+	},
+	{
+		name: "Both in Original mode allows what is in allow and not in deny",
+		setup: &list{
+			listMode:    listModeOriginal,
+			allow:       []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
+			deny:        []string{"some/pkg/a", "some/pkg/b/foo", "some/pkg/d"},
+			suggestions: []string{"because I said so", "really don't use", "common"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:    "in allow but not in deny",
+				input:   "some/pkg/c/alpha",
+				allowed: true,
+			},
+			{
+				name:       "subpackage allowed but root denied",
+				input:      "some/pkg/a/foo/bar",
+				allowed:    false,
+				suggestion: "because I said so",
+			},
+			{
+				name:       "subpackage not in allowed but root denied",
+				input:      "some/pkg/a/baz",
+				allowed:    false,
+				suggestion: "because I said so",
+			},
+			{
+				name:       "subpackage denied but root allowed",
+				input:      "some/pkg/b/foo/bar",
+				allowed:    false,
+				suggestion: "really don't use",
+			},
+			{
+				name:    "subpackage not denied but root allowed",
+				input:   "some/pkg/b/baz",
+				allowed: true,
+			},
+			{
+				name:       "in deny but not in allow",
+				input:      "some/pkg/d/baz",
+				allowed:    false,
+				suggestion: "common",
+			},
+			{
+				name:    "not in allow nor in deny",
+				input:   "some/pkg/e/alpha",
+				allowed: false,
+			},
+			{
+				name:    "check for out of bounds",
+				input:   "aaa/pkg/e/alpha",
+				allowed: false,
+			},
+		},
+	},
+	{
+		name: "Empty allow in Strict matches nothing",
+		setup: &list{
+			listMode:    listModeStrict,
+			deny:        []string{"some/pkg/a", "some/pkg/b$"},
+			suggestions: []string{"because I said so", "please use newer version"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:       "in deny",
+				input:      "some/pkg/a/bar",
+				allowed:    false,
+				suggestion: "because I said so",
+			},
+			{
+				name:    "not in deny suffixed by exact match",
+				input:   "some/pkg/b/foo/bar",
+				allowed: false,
+			},
+			{
+				name:       "in deny exact match",
+				input:      "some/pkg/b",
+				allowed:    false,
+				suggestion: "please use newer version",
+			},
+		},
+	},
+	{
+		name: "Empty deny in Strict only matches what is in allow",
+		setup: &list{
+			listMode: listModeStrict,
+			allow:    []string{"some/pkg/a", "some/pkg/b$"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:    "in allow",
+				input:   "some/pkg/a/bar",
+				allowed: true,
+			},
+			{
+				name:    "not in allow suffixed by exact match",
+				input:   "some/pkg/b/foo/bar",
+				allowed: false,
+			},
+			{
+				name:    "in allow exact match",
+				input:   "some/pkg/b",
+				allowed: true,
 			},
 		},
 	},
@@ -568,42 +706,157 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 		setup: &list{
 			listMode:    listModeStrict,
 			allow:       []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
-			deny:        []string{"some/pkg/a", "some/pkg/b/foo"},
-			suggestions: []string{"because I said so", "really don't use"},
+			deny:        []string{"some/pkg/a", "some/pkg/b/foo", "some/pkg/d"},
+			suggestions: []string{"because I said so", "really don't use", "common"},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
-				name:     "in allow but not in deny",
-				input:    "some/pkg/c/alpha",
-				expected: true,
+				name:    "in allow but not in deny",
+				input:   "some/pkg/c/alpha",
+				allowed: true,
 			},
 			{
-				name:       "subpackage allowed but root denied",
-				input:      "some/pkg/a/foo/bar",
-				expected:   false,
-				suggestion: "because I said so",
+				name:    "subpackage allowed but root denied",
+				input:   "some/pkg/a/foo/bar",
+				allowed: true,
 			},
 			{
 				name:       "subpackage not in allowed but root denied",
 				input:      "some/pkg/a/baz",
-				expected:   false,
+				allowed:    false,
 				suggestion: "because I said so",
 			},
 			{
 				name:       "subpackage denied but root allowed",
 				input:      "some/pkg/b/foo/bar",
-				expected:   false,
+				allowed:    false,
 				suggestion: "really don't use",
 			},
 			{
-				name:     "subpackage not denied but root allowed",
-				input:    "some/pkg/b/baz",
-				expected: true,
+				name:    "subpackage not denied but root allowed",
+				input:   "some/pkg/b/baz",
+				allowed: true,
 			},
 			{
-				name:     "not in allow nor in deny",
-				input:    "some/pkg/d/alpha",
-				expected: false,
+				name:       "in deny but not in allow",
+				input:      "some/pkg/d/baz",
+				allowed:    false,
+				suggestion: "common",
+			},
+			{
+				name:    "not in allow nor in deny",
+				input:   "some/pkg/e/alpha",
+				allowed: false,
+			},
+			{
+				name:    "check for out of bounds",
+				input:   "aaa/pkg/e/alpha",
+				allowed: false,
+			},
+		},
+	},
+	{
+		name: "Empty allow in Lax matches anything not in deny",
+		setup: &list{
+			listMode:    listModeLax,
+			deny:        []string{"some/pkg/a", "some/pkg/b$"},
+			suggestions: []string{"because I said so", "please use newer version"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:       "in deny",
+				input:      "some/pkg/a/bar",
+				allowed:    false,
+				suggestion: "because I said so",
+			},
+			{
+				name:    "not in deny suffixed by exact match",
+				input:   "some/pkg/b/foo/bar",
+				allowed: true,
+			},
+			{
+				name:       "in deny exact match",
+				input:      "some/pkg/b",
+				allowed:    false,
+				suggestion: "please use newer version",
+			},
+		},
+	},
+	{
+		name: "Empty deny in Lax matches everything",
+		setup: &list{
+			listMode: listModeLax,
+			allow:    []string{"some/pkg/a", "some/pkg/b$"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:    "in allow",
+				input:   "some/pkg/a/bar",
+				allowed: true,
+			},
+			{
+				name:    "not in allow suffixed by exact match",
+				input:   "some/pkg/b/foo/bar",
+				allowed: true,
+			},
+			{
+				name:    "in allow exact match",
+				input:   "some/pkg/b",
+				allowed: true,
+			},
+		},
+	},
+	{
+		name: "Both in Lax mode allows what is in allow and not in deny",
+		setup: &list{
+			listMode:    listModeLax,
+			allow:       []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
+			deny:        []string{"some/pkg/a", "some/pkg/b/foo", "some/pkg/d"},
+			suggestions: []string{"because I said so", "really don't use", "common"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:    "in allow but not in deny",
+				input:   "some/pkg/c/alpha",
+				allowed: true,
+			},
+			{
+				name:    "subpackage allowed but root denied",
+				input:   "some/pkg/a/foo/bar",
+				allowed: true,
+			},
+			{
+				name:       "subpackage not in allowed but root denied",
+				input:      "some/pkg/a/baz",
+				allowed:    false,
+				suggestion: "because I said so",
+			},
+			{
+				name:       "subpackage denied but root allowed",
+				input:      "some/pkg/b/foo/bar",
+				allowed:    false,
+				suggestion: "really don't use",
+			},
+			{
+				name:    "subpackage not denied but root allowed",
+				input:   "some/pkg/b/baz",
+				allowed: true,
+			},
+			{
+				name:       "in deny but not in allow",
+				input:      "some/pkg/d/baz",
+				allowed:    false,
+				suggestion: "common",
+			},
+			{
+				name:    "not in allow nor in deny",
+				input:   "some/pkg/e/alpha",
+				allowed: true,
+			},
+			{
+				name:    "check for out of bounds",
+				input:   "aaa/pkg/e/alpha",
+				allowed: true,
 			},
 		},
 	},
@@ -615,7 +868,7 @@ func TestListImportAllowed(t *testing.T) {
 			for _, sc := range s.tests {
 				ts.Run(sc.name, func(tst *testing.T) {
 					act, sugg := s.setup.importAllowed(sc.input)
-					if act != sc.expected {
+					if act != sc.allowed {
 						tst.Error("Did not return expected result")
 					}
 					if sugg != sc.suggestion {

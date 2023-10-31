@@ -4,6 +4,7 @@
       "$all",
       "!$test"
     ],
+    "listMode": "Strict",
     "allow": [
       "$gostd",
       "github.com/"
