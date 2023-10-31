@@ -12,8 +12,7 @@ go install github.com/OpenPeeDeeP/depguard@latest
 
 ## Config
 
-The Depguard binary looks for a file named `^\.?depguard\.(yaml|yml|json|toml)$` in the current
-current working directory. Examples include (`.depguard.yml` or `depguard.toml`).
+The Depguard binary looks for a file named `^\.?depguard\.(yaml|yml|json|toml)$` in the current working directory. Examples include (`.depguard.yml` or `depguard.toml`).
 
 The following is an example configuration file.
 
@@ -92,7 +91,7 @@ to reduce repetition and tedious behaviors.
 
 #### File Variables
 
-> you can still use and exclamation mark `!` in front of a variable to say not to 
+> you can still use an exclamation mark `!` in front of a variable to say not to 
 use it. Example `!$test` will match any file that is not a go test file.
 
 - `$all` - matches all go files
