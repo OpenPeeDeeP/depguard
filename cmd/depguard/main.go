@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -83,14 +84,18 @@ func (*yamlConfigurator) parse(r io.Reader) (*depguard.LinterSettings, error) {
 func getSettings() (*depguard.LinterSettings, error) {
 	fy, f, ft, err := findFile(".")
 	if errors.Is(err, fs.ErrNotExist) {
-		arg := []string{"list", "-f", "{{.Root}}"}
-		out, err := exec.Command("go", arg...).Output()
-		if err != nil {
-			return nil, err
+		arg := []string{"list", "-f", "{{.Root -}}"}
+		out, cerr := exec.Command("go", arg...).Output() 
+		if cerr != nil {
+			return nil, cerr
 		}
-		fy, f, ft, err = findFile(string(out))
+		fy, f, ft, err = findFile(strings.TrimRight(string(out), "\r\n"))
 	}
+	// careful: be sure to overwrite err (not shadow!) in the nested scope above ;)
 	if err != nil {
+		if e, ok := err.(*fs.PathError); ok {
+			err = e.Unwrap()
+		}
 		return nil, err
 	}
 	file, err := fy.Open(f)
@@ -101,17 +106,26 @@ func getSettings() (*depguard.LinterSettings, error) {
 	return ft.parse(file)
 }
 
-func caller() (name, f string, n int) {
+// The returned filepath is relative to given base path rel, or 
+// it is absolute if rel is empty or invalid.
+func caller(rel string) (name, f string, n int) {
 	if pc, _, _, ok := runtime.Caller(1); ok {
 		if fn := runtime.FuncForPC(pc); fn != nil {
 			name = fn.Name()
 			f, n = fn.FileLine(pc)
+			if r, err := filepath.Rel(rel, f); err == nil {
+				f = r
+			}
 		}
 	}
 	return
 }
 
 func findFile(path string) (fs.FS, string, configurator, error) {
+	abs, err := filepath.Abs(path)
+	if err == nil {
+		path = abs
+	}
 	fsys := os.DirFS(path)
 	cwd, err := fs.ReadDir(fsys, ".")
 	if err != nil {
@@ -128,7 +142,7 @@ func findFile(path string) (fs.FS, string, configurator, error) {
 		}
 		return fsys, matches[0], fileTypes[matches[1]], nil
 	}
-	fn, fp, ln := caller()
+	fn, fp, ln := caller(path)
 	return nil, "", nil, &fs.PathError{
 		Op: fmt.Sprintf("%s@%s:%d", fn, fp, ln),
 		Path: path,
