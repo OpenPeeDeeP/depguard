@@ -7,7 +7,9 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -79,12 +81,19 @@ func (*yamlConfigurator) parse(r io.Reader) (*depguard.LinterSettings, error) {
 }
 
 func getSettings() (*depguard.LinterSettings, error) {
-	fs := os.DirFS(".")
-	f, ft, err := findFile(fs)
+	fy, f, ft, err := findFile(".")
+	if errors.Is(err, fs.ErrNotExist) {
+		arg := []string{"list", "-f", "{{.Root}}"}
+		out, err := exec.Command("go", arg...).Output()
+		if err != nil {
+			return nil, err
+		}
+		fy, f, ft, err = findFile(string(out))
+	}
 	if err != nil {
 		return nil, err
 	}
-	file, err := fs.Open(f)
+	file, err := fy.Open(f)
 	if err != nil {
 		return nil, fmt.Errorf("could not open %s to read: %w", f, err)
 	}
@@ -92,10 +101,21 @@ func getSettings() (*depguard.LinterSettings, error) {
 	return ft.parse(file)
 }
 
-func findFile(fsys fs.FS) (string, configurator, error) {
+func caller() (name, f string, n int) {
+	if pc, _, _, ok := runtime.Caller(1); ok {
+		if fn := runtime.FuncForPC(pc); fn != nil {
+			name = fn.Name()
+			f, n = fn.FileLine(pc)
+		}
+	}
+	return
+}
+
+func findFile(path string) (fs.FS, string, configurator, error) {
+	fsys := os.DirFS(path)
 	cwd, err := fs.ReadDir(fsys, ".")
 	if err != nil {
-		return "", nil, fmt.Errorf("could not read cwd: %w", err)
+		return nil, "", nil, fmt.Errorf("fs.ReadDir(<%q>): %w", path, err)
 	}
 	for _, entry := range cwd {
 		if entry.IsDir() {
@@ -106,7 +126,12 @@ func findFile(fsys fs.FS) (string, configurator, error) {
 		if len(matches) != 2 {
 			continue
 		}
-		return matches[0], fileTypes[matches[1]], nil
+		return fsys, matches[0], fileTypes[matches[1]], nil
 	}
-	return "", nil, errors.New("unable to find a configuration file")
+	fn, fp, ln := caller()
+	return nil, "", nil, &fs.PathError{
+		Op: fmt.Sprintf("%s@%s:%d", fn, fp, ln),
+		Path: path,
+		Err: fs.ErrNotExist,
+	}
 }
