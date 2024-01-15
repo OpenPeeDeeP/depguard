@@ -49,7 +49,7 @@ the linter's output.
 - `files` - list of file globs that will match this list of settings to compare against
 - `allow` - list of allowed packages
 - `deny` - map of packages that are not allowed where the value is a suggestion
-= `listMode` - the mode to use for package matching
+- `listMode` - the mode to use for package matching
 
 Files are matched using [Globs](https://github.com/gobwas/glob). If the files 
 list is empty, then all files will match that list. Prefixing a file
