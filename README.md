@@ -7,7 +7,7 @@ allow specific packages within a repository.
 ## Install
 
 ```bash
-go install github.com/OpenPeeDeeP/depguard@latest
+go install github.com/OpenPeeDeeP/depguard/cmd/depguard@latest
 ```
 
 ## Config
