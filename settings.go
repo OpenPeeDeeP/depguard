@@ -40,8 +40,7 @@ func (l *List) compile() (*list, error) {
 		return nil, nil
 	}
 	li := &list{}
-	var errs utils.MultiError
-	var err error
+	var errs error
 
 	// Determine List Mode
 	switch strings.ToLower(l.ListMode) {
@@ -54,7 +53,7 @@ func (l *List) compile() (*list, error) {
 	case "lax":
 		li.listMode = listModeLax
 	default:
-		errs = append(errs, fmt.Errorf("%s is not a known list mode", l.ListMode))
+		errs = errors.Join(errs, fmt.Errorf("%s is not a known list mode", l.ListMode))
 	}
 
 	// Compile Files
@@ -67,12 +66,12 @@ func (l *List) compile() (*list, error) {
 		// Expand File if needed
 		fs, err := utils.ExpandSlice([]string{f}, utils.PathExpandable)
 		if err != nil {
-			errs = append(errs, err)
+			errs = errors.Join(errs, err)
 		}
 		for _, exp := range fs {
 			g, err := glob.Compile(exp, '/')
 			if err != nil {
-				errs = append(errs, fmt.Errorf("%s could not be compiled: %w", exp, err))
+				errs = errors.Join(errs, fmt.Errorf("%s could not be compiled: %w", exp, err))
 				continue
 			}
 			if negate {
@@ -84,10 +83,11 @@ func (l *List) compile() (*list, error) {
 	}
 
 	if len(l.Allow) > 0 {
+		var err error
 		// Expand Allow
 		l.Allow, err = utils.ExpandSlice(l.Allow, utils.PackageExpandable)
 		if err != nil {
-			errs = append(errs, err)
+			errs = errors.Join(errs, err)
 		}
 
 		// Sort Allow
@@ -98,9 +98,9 @@ func (l *List) compile() (*list, error) {
 
 	if l.Deny != nil {
 		// Expand Deny Map (to keep suggestions)
-		err = utils.ExpandMap(l.Deny, utils.PackageExpandable)
+		err := utils.ExpandMap(l.Deny, utils.PackageExpandable)
 		if err != nil {
-			errs = append(errs, err)
+			errs = errors.Join(errs, err)
 		}
 
 		// Split Deny Into Package Slice
@@ -121,10 +121,10 @@ func (l *List) compile() (*list, error) {
 
 	// Populate the type of this list
 	if len(li.allow) == 0 && len(li.deny) == 0 {
-		errs = append(errs, errors.New("must have an Allow and/or Deny package list"))
+		errs = errors.Join(errs, errors.New("must have an Allow and/or Deny package list"))
 	}
 
-	if len(errs) > 0 {
+	if errs != nil {
 		return nil, errs
 	}
 	return li, nil
@@ -182,11 +182,11 @@ func (l LinterSettings) compile() (linterSettings, error) {
 	}
 	sort.Strings(names)
 	li := make(linterSettings, 0, len(l))
-	var errs utils.MultiError
+	var errs error
 	for _, name := range names {
 		c, err := l[name].compile()
 		if err != nil {
-			errs = append(errs, err)
+			errs = errors.Join(errs, err)
 			continue
 		}
 		if c == nil {
@@ -195,7 +195,7 @@ func (l LinterSettings) compile() (linterSettings, error) {
 		c.name = name
 		li = append(li, c)
 	}
-	if len(errs) > 0 {
+	if errs != nil {
 		return nil, errs
 	}
 
