@@ -348,13 +348,21 @@ func TestLinterSettingsCompile(t *testing.T) {
 
 var (
 	prefixList = []string{
-		"some/package/a",
-		"some/package/b",
-		"some/package/c/",
-		"some/package/d$",
-		"some/pkg/c",
-		"some/pkg/d",
-		"some/pkg/e",
+		"willd.io/package/a",
+		"willd.io/package/b",
+		"willd.io/package/c/",
+		"willd.io/package/d$",
+		"willd.io/pkg/c",
+		"willd.io/pkg/d",
+		"willd.io/pkg/e",
+	}
+
+	diffKindsList = []string{
+		"./relative/path",
+		"/absolute/path",
+		"os/exec",
+		"path",
+		"willd.io/normal/package",
 	}
 
 	globList = []glob.Glob{
@@ -375,19 +383,53 @@ func testStrInPrefixList(str string, expect bool, expectedIdx int) func(t *testi
 	}
 }
 
+func testStrInDiffPrefixList(str string, expect bool, expectedIdx int) func(t *testing.T) {
+	return func(t *testing.T) {
+		act, idx := strInPrefixList(str, diffKindsList)
+		if act != expect {
+			t.Errorf("string prefix mismatch: expected %s - got %s", strconv.FormatBool(expect), strconv.FormatBool(act))
+		}
+		if idx != expectedIdx {
+			t.Errorf("string prefix index: expected %d - got %d", expectedIdx, idx)
+		}
+	}
+}
+
 func TestStrInPrefixList(t *testing.T) {
 	sort.Strings(prefixList)
-	t.Run("full_match_start", testStrInPrefixList("some/package/a", true, 0))
-	t.Run("full_match", testStrInPrefixList("some/package/b", true, 1))
-	t.Run("full_match_end", testStrInPrefixList("some/pkg/e", true, 6))
-	t.Run("no_match_end", testStrInPrefixList("zome/pkg/e", false, 6))
-	t.Run("no_match_start", testStrInPrefixList("aome/pkg/e", false, -1))
-	t.Run("match_start", testStrInPrefixList("some/package/a/files", true, 0))
-	t.Run("match_middle", testStrInPrefixList("some/pkg/c/files", true, 4))
-	t.Run("match_end", testStrInPrefixList("some/pkg/e/files", true, 6))
-	t.Run("no_match_trailing", testStrInPrefixList("some/package/c", false, 1))
-	t.Run("match_exact", testStrInPrefixList("some/package/d", true, 3))
-	t.Run("no_prefix_match_exact", testStrInPrefixList("some/package/d/something", false, 3))
+	t.Run("full_match_start", testStrInPrefixList("willd.io/package/a", true, 0))
+	t.Run("full_match", testStrInPrefixList("willd.io/package/b", true, 1))
+	t.Run("full_match_end", testStrInPrefixList("willd.io/pkg/e", true, 6))
+	t.Run("no_match_end", testStrInPrefixList("zilld.io/pkg/e", false, 6))
+	t.Run("no_match_start", testStrInPrefixList("ailld.io/pkg/e", false, -1))
+	t.Run("match_start", testStrInPrefixList("willd.io/package/a/files", true, 0))
+	t.Run("match_middle", testStrInPrefixList("willd.io/pkg/c/files", true, 4))
+	t.Run("match_end", testStrInPrefixList("willd.io/pkg/e/files", true, 6))
+	t.Run("no_match_trailing", testStrInPrefixList("willd.io/package/c", false, 1))
+	t.Run("match_exact", testStrInPrefixList("willd.io/package/d", true, 3))
+	t.Run("no_prefix_match_exact", testStrInPrefixList("willd.io/package/d/something", false, 3))
+
+	sort.Strings(diffKindsList)
+	t.Run("match_import_with_domain_exact", testStrInDiffPrefixList("willd.io/normal/package", true, 4))
+	t.Run("match_import_with_domain", testStrInDiffPrefixList("willd.io/normal/package/nested", true, 4))
+	t.Run("no_match_import_with_domain", testStrInDiffPrefixList("willd.io/normal", false, 3))
+	t.Run("match_import_relative_exact", testStrInDiffPrefixList("./relative/path", true, 0))
+	t.Run("match_import_relative", testStrInDiffPrefixList("./relative/path/nested", true, 0))
+	t.Run("no_match_import_relative", testStrInDiffPrefixList("./relative", false, -1))
+	t.Run("match_import_absolute_exact", testStrInDiffPrefixList("/absolute/path", true, 1))
+	t.Run("match_import_absolute", testStrInDiffPrefixList("/absolute/path/nested", true, 1))
+	t.Run("no_match_import_absolute", testStrInDiffPrefixList("/absolute", false, 0))
+	t.Run("match_gostd_single_exact", testStrInDiffPrefixList("path", true, 3))
+	t.Run("match_gostd_single", testStrInDiffPrefixList("path/filepath", true, 3))
+	t.Run("no_match_gostd_single", testStrInDiffPrefixList("evil", false, 1))
+	t.Run("match_gostd_multiple_exact", testStrInDiffPrefixList("os/exec", true, 2))
+	t.Run("match_gostd_multiple", testStrInDiffPrefixList("os/exec/fake", true, 2))
+	t.Run("no_match_gostd_multiple", testStrInDiffPrefixList("os/evil", false, 1))
+
+	// "Evil Packages"
+	t.Run("gostd_in_domain", testStrInDiffPrefixList("path.willd.io/normal/package", false, 3))
+	t.Run("gostd_in_relative", testStrInDiffPrefixList("./os/exec", false, -1))
+	t.Run("gostd_in_absolute", testStrInDiffPrefixList("/os/exec", false, 1))
 }
 
 func testStrInGlobList(str string, expect bool) func(t *testing.T) {
