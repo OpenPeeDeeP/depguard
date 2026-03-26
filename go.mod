@@ -12,7 +12,7 @@ require (
 require (
 	github.com/BurntSushi/toml v1.4.0
 	github.com/google/go-cmp v0.6.0
-	gopkg.in/yaml.v3 v3.0.1
+	go.yaml.in/yaml/v3 v3.0.4
 )
 
 require (
