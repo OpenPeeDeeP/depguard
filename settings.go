@@ -221,7 +221,25 @@ func strInGlobList(str string, globList []glob.Glob) bool {
 	return false
 }
 
+func importMatchesPrefix(str, ioc string) bool {
+	if ioc == "" {
+		return false
+	}
+	if ioc[len(ioc)-1] == '$' {
+		return str == ioc[:len(ioc)-1]
+	}
+
+	// GOROOT package roots from $gostd have no '.' or '/'.
+	// They must not match domain imports like go.evil.me/pkg.
+	if !strings.ContainsAny(ioc, "./") && strings.ContainsRune(str, '.') {
+		return false
+	}
+
+	return strings.HasPrefix(str, ioc)
+}
+
 func strInPrefixList(str string, prefixList []string) (bool, int) {
+	// Keep predecessor index semantics for no-match cases.
 	// Idx represents where in the prefix slice the passed in string would go
 	// when sorted. -1 Just means that it would be at the very front of the slice.
 	idx := sort.Search(len(prefixList), func(i int) bool {
@@ -232,17 +250,27 @@ func strInPrefixList(str string, prefixList []string) (bool, int) {
 	if idx == -1 {
 		return false, idx
 	}
-	ioc := prefixList[idx]
-	if ioc[len(ioc)-1] == '$' {
-		return str == ioc[:len(ioc)-1], idx
+
+	// Find the best (longest) matching prefix, not just predecessor.
+	// This avoids false negatives with mixed prefixes like:
+	//   go
+	//   go.opentelemetry.io
+	bestIdx := -1
+	bestLen := -1
+	for i, p := range prefixList {
+		if !importMatchesPrefix(str, p) {
+			continue
+		}
+		plen := len(strings.TrimSuffix(p, "$"))
+		if plen > bestLen {
+			bestLen = plen
+			bestIdx = i
+		}
 	}
 
-	// There is no sep chars in ioc so it is a GOROOT import that is being matched to the import (str) (see $gostd expander)
-	// AND the import contains a period which GOROOT cannot have. This eliminates the go.evil.me/pkg scenario
-	// BUT should still allow /os/exec and ./os/exec imports which are very uncommon
-	if !strings.ContainsAny(ioc, "./") && strings.ContainsRune(str, '.') {
-		return false, idx
+	if bestIdx != -1 {
+		return true, bestIdx
 	}
 
-	return strings.HasPrefix(str, ioc), idx
+	return false, idx
 }
