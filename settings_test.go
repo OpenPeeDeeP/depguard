@@ -432,6 +432,24 @@ func TestStrInPrefixList(t *testing.T) {
 	t.Run("gostd_in_absolute", testStrInDiffPrefixList("/os/exec", false, 1))
 }
 
+func TestStrInPrefixList_GoStdAndGoDomainDoNotConflict(t *testing.T) {
+	allow := []string{
+		"go",
+		"go.opentelemetry.io",
+		"golang.org/x",
+	}
+	sort.Strings(allow)
+
+	ok, _ := strInPrefixList("go/parser", allow)
+	if !ok {
+		t.Fatal("expected go/parser to match go from $gostd")
+	}
+	ok, _ = strInPrefixList("go/token", allow)
+	if !ok {
+		t.Fatal("expected go/token to match go from $gostd")
+	}
+}
+
 func testStrInGlobList(str string, expect bool) func(t *testing.T) {
 	return func(t *testing.T) {
 		if strInGlobList(str, globList) != expect {
