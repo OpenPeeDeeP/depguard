@@ -26,6 +26,10 @@ type settingsCompileScenario struct {
 	expErr   error
 }
 
+func cmpGlobPattern(a, b *glob.Pattern) bool {
+	return a.String() == b.String()
+}
+
 var (
 	listCompileScenarios = []*listCompileScenario{
 		{
@@ -56,7 +60,7 @@ var (
 				Allow: []string{"os"},
 			},
 			exp: &list{
-				files: []glob.Glob{
+				files: []*glob.Pattern{
 					glob.MustCompile("**/*.go", '/'),
 				},
 				allow: []string{"os"},
@@ -69,7 +73,7 @@ var (
 				Allow: []string{"os"},
 			},
 			exp: &list{
-				negFiles: []glob.Glob{
+				negFiles: []*glob.Pattern{
 					glob.MustCompile("**/*_test.go", '/'),
 				},
 				allow: []string{"os"},
@@ -82,10 +86,10 @@ var (
 				Allow: []string{"os"},
 			},
 			exp: &list{
-				files: []glob.Glob{
+				files: []*glob.Pattern{
 					glob.MustCompile("**/foo.go", '/'),
 				},
-				negFiles: []glob.Glob{
+				negFiles: []*glob.Pattern{
 					glob.MustCompile("**/bar.go", '/'),
 				},
 				allow: []string{"os"},
@@ -148,10 +152,10 @@ var (
 				},
 			},
 			exp: &list{
-				files: []glob.Glob{
+				files: []*glob.Pattern{
 					glob.MustCompile("**/*.go", '/'),
 				},
-				negFiles: []glob.Glob{
+				negFiles: []*glob.Pattern{
 					glob.MustCompile("**/*_test.go", '/'),
 				},
 				allow:       []string{"os"},
@@ -240,7 +244,7 @@ var (
 			exp: []*list{
 				{
 					name: "Main",
-					files: []glob.Glob{
+					files: []*glob.Pattern{
 						glob.MustCompile("**/*.go", '/'),
 					},
 					allow: []string{"FIND ME", "FIND ME TOO"},
@@ -262,14 +266,14 @@ var (
 			exp: []*list{
 				{
 					name: "Main",
-					files: []glob.Glob{
+					files: []*glob.Pattern{
 						glob.MustCompile("**/*.go", '/'),
 					},
 					allow: []string{"os"},
 				},
 				{
 					name: "Test",
-					files: []glob.Glob{
+					files: []*glob.Pattern{
 						glob.MustCompile("**/*_test.go", '/'),
 					},
 					allow: []string{"os"},
@@ -294,7 +298,7 @@ func testListCompile(s *listCompileScenario) func(*testing.T) {
 		if err != nil {
 			t.Fatal("not expecting an error")
 		}
-		diff := cmp.Diff(s.exp, act, cmp.AllowUnexported(list{}))
+		diff := cmp.Diff(s.exp, act, cmp.AllowUnexported(list{}), cmp.Comparer(cmpGlobPattern))
 		if diff != "" {
 			t.Errorf("compiled list is not what was expected\n%s", diff)
 		}
@@ -316,7 +320,7 @@ func testSettingsCompile(s *settingsCompileScenario) func(*testing.T) {
 		if err != nil {
 			t.Fatal("not expecting an error")
 		}
-		diff := cmp.Diff(s.exp, act, cmp.AllowUnexported(list{}))
+		diff := cmp.Diff(s.exp, act, cmp.AllowUnexported(list{}), cmp.Comparer(cmpGlobPattern))
 		if diff != "" {
 			t.Errorf("compiled settings is not what was expected\n%s", diff)
 		}
@@ -365,7 +369,7 @@ var (
 		"willd.io/normal/package",
 	}
 
-	globList = []glob.Glob{
+	globList = []*glob.Pattern{
 		glob.MustCompile("some/*/a", '/'),
 		glob.MustCompile("some/**/a", '/'),
 	}
@@ -482,7 +486,7 @@ var listFileMatchScenarios = []*listFileMatchScenario{
 	{
 		name: "Empty allow matches anything not in deny",
 		setup: &list{
-			negFiles: []glob.Glob{
+			negFiles: []*glob.Pattern{
 				glob.MustCompile("**/*_test.go", '/'),
 			},
 		},
@@ -507,7 +511,7 @@ var listFileMatchScenarios = []*listFileMatchScenario{
 	{
 		name: "Empty deny only matches what is in allowed",
 		setup: &list{
-			files: []glob.Glob{
+			files: []*glob.Pattern{
 				glob.MustCompile("**/*_test.go", '/'),
 			},
 		},
@@ -532,10 +536,10 @@ var listFileMatchScenarios = []*listFileMatchScenario{
 	{
 		name: "Both only allows what is in allow and not in deny",
 		setup: &list{
-			files: []glob.Glob{
+			files: []*glob.Pattern{
 				glob.MustCompile("**/*.go", '/'),
 			},
-			negFiles: []glob.Glob{
+			negFiles: []*glob.Pattern{
 				glob.MustCompile("**/*_test.go", '/'),
 			},
 		},
@@ -931,13 +935,13 @@ type linterSettingsWhichListsScenario struct {
 var linterSettingsWhichListsSetup = linterSettings{
 	{
 		name: "Main",
-		files: []glob.Glob{
+		files: []*glob.Pattern{
 			glob.MustCompile("**/*.go", '/'),
 		},
 	},
 	{
 		name: "Test",
-		files: []glob.Glob{
+		files: []*glob.Pattern{
 			glob.MustCompile("**/*_test.go", '/'),
 		},
 	},

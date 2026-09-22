@@ -28,8 +28,8 @@ const (
 type list struct {
 	listMode    listMode
 	name        string
-	files       []glob.Glob
-	negFiles    []glob.Glob
+	files       []*glob.Pattern
+	negFiles    []*glob.Pattern
 	allow       []string
 	deny        []string
 	suggestions []string
@@ -212,7 +212,7 @@ func (s linterSettings) whichLists(fileName string) []*list {
 	return matches
 }
 
-func strInGlobList(str string, globList []glob.Glob) bool {
+func strInGlobList(str string, globList []*glob.Pattern) bool {
 	for _, g := range globList {
 		if g.Match(str) {
 			return true
