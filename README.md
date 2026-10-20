@@ -56,6 +56,10 @@ list is empty, then all files will match that list. Prefixing a file
 with an exclamation mark `!` will put that glob in a "don't match" list. A file
 will match a list if it is allowed and not denied.
 
+A `**` matches any number of characters, including `/`. Between two separators
+it also matches zero directories, so `**/foo/**/*.go` matches both
+`foo/bar.go` and `foo/baz/bar.go`.
+
 > Should always prefix a file glob with `**/` as files are matched against absolute paths.
 
 Allow is a prefix of packages to allow. A dollar sign `$` can be used at the end

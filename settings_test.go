@@ -578,6 +578,56 @@ func TestListFileMatch(t *testing.T) {
 	}
 }
 
+func TestListFileMatchGlobstar(t *testing.T) {
+	l, err := (&List{
+		Files: []string{"**/foo/**/*.go", "!**/foo/**/gen/*.go"},
+		Allow: []string{"os"},
+	}).compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []*listFileMatchScenarioInner{
+		{
+			name:     "zero directories",
+			input:    "/abs/proj/foo/foo.go",
+			expected: true,
+		},
+		{
+			name:     "one directory",
+			input:    "/abs/proj/foo/bar/bar.go",
+			expected: true,
+		},
+		{
+			name:     "many directories",
+			input:    "/abs/proj/foo/a/b/c.go",
+			expected: true,
+		},
+		{
+			name:     "directory name prefix",
+			input:    "/abs/proj/foobar/foo.go",
+			expected: false,
+		},
+		{
+			name:     "outside directory",
+			input:    "/abs/proj/foo.go",
+			expected: false,
+		},
+		{
+			name:     "negated zero directories",
+			input:    "/abs/proj/foo/gen/gen.go",
+			expected: false,
+		},
+	}
+	for _, sc := range tests {
+		t.Run(sc.name, func(tst *testing.T) {
+			act := l.fileMatch(sc.input)
+			if act != sc.expected {
+				tst.Error("Did not return expected result")
+			}
+		})
+	}
+}
+
 type listImportAllowedScenario struct {
 	name  string
 	setup *list
