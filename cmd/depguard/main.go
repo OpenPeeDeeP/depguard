@@ -102,7 +102,7 @@ func getSettings() (*depguard.LinterSettings, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not open %s to read: %w", f, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	return ft.parse(file)
 }
 
