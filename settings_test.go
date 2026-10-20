@@ -237,6 +237,20 @@ var (
 			},
 			expErr: errors.New("MiddleOut is not a known list mode"),
 		},
+		{
+			name: "Empty Allow Package",
+			list: &List{
+				Allow: []string{""},
+			},
+			expErr: errors.New("allow contains an empty package"),
+		},
+		{
+			name: "Empty Deny Package",
+			list: &List{
+				Deny: map[string]string{"": "no pkg"},
+			},
+			expErr: errors.New("deny contains an empty package"),
+		},
 	}
 	settingsCompileScenarios = []*settingsCompileScenario{
 		{
@@ -279,6 +293,15 @@ var (
 					allow: []string{"os"},
 				},
 			},
+		},
+		{
+			name: "Error names the list",
+			settings: LinterSettings{
+				"bad": &List{
+					Deny: map[string]string{"": "no pkg"},
+				},
+			},
+			expErr: errors.New("bad: deny contains an empty package"),
 		},
 	}
 )
