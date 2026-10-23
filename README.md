@@ -7,7 +7,7 @@ allow specific packages within a repository.
 ## Install
 
 ```bash
-go install github.com/OpenPeeDeeP/depguard/cmd/depguard@latest
+go install github.com/OpenPeeDeeP/depguard/v2/cmd/depguard@latest
 ```
 
 ## Config
@@ -182,3 +182,12 @@ linters-settings:
           - pkg: io/ioutil
             desc: "replaced by io and os packages since Go 1.16: https://tip.golang.org/doc/go1.16#ioutil"
 ```
+
+## AI Disclosure
+
+AI tools (Claude) are used in this project as a discussion partner for reviewing
+changes, weighing design options, and talking through ideas. The AI does not
+write the linter's code; that is written by the maintainer and contributors. It
+may assist with some unit tests and documentation, but most of those are also
+written by hand, and anything it contributes is reviewed by the maintainer before
+it is committed.
