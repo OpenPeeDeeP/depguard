@@ -16,7 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 	depguard "github.com/OpenPeeDeeP/depguard/v2"
 	"golang.org/x/tools/go/analysis/singlechecker"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 var configFileRE = regexp.MustCompile(`^\.?depguard\.(yaml|yml|json|toml)$`)

@@ -8,9 +8,9 @@ require (
 )
 
 require (
-	github.com/BurntSushi/toml v1.4.0
-	github.com/google/go-cmp v0.6.0
-	gopkg.in/yaml.v3 v3.0.1
+	github.com/BurntSushi/toml v1.6.0
+	github.com/google/go-cmp v0.7.0
+	go.yaml.in/yaml/v3 v3.0.5
 )
 
 require (
