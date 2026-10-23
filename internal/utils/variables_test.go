@@ -136,7 +136,7 @@ var (
 )
 
 func TestExpandSlice(t *testing.T) {
-	t.Run("successful", func(ts *testing.T) {
+	t.Run("successful", func(t *testing.T) {
 		some := []string{"a", "$succ", "b"}
 		exp := []string{"a", "FIND ME", "FIND ME TOO", "b"}
 		act, err := ExpandSlice(some, expandables)
@@ -148,7 +148,7 @@ func TestExpandSlice(t *testing.T) {
 			t.Errorf("slices don't match\n%s", diff)
 		}
 	})
-	t.Run("failure", func(ts *testing.T) {
+	t.Run("failure", func(t *testing.T) {
 		some := []string{"a", "$fail", "b"}
 		_, err := ExpandSlice(some, expandables)
 		if err == nil {
@@ -161,7 +161,7 @@ func TestExpandSlice(t *testing.T) {
 }
 
 func TestExpandMap(t *testing.T) {
-	t.Run("successful", func(ts *testing.T) {
+	t.Run("successful", func(t *testing.T) {
 		some := map[string]string{
 			"a":     "Use b",
 			"$succ": "Use stdlib",
@@ -182,7 +182,7 @@ func TestExpandMap(t *testing.T) {
 			t.Errorf("maps don't match\n%s", diff)
 		}
 	})
-	t.Run("failure", func(ts *testing.T) {
+	t.Run("failure", func(t *testing.T) {
 		some := map[string]string{
 			"a":     "Use b",
 			"$fail": "Use stdlib",
