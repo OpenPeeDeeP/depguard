@@ -446,17 +446,17 @@ func TestStrInPrefixList(t *testing.T) {
 	t.Run("match_import_absolute_exact", testStrInDiffPrefixList("/absolute/path", true, 1))
 	t.Run("match_import_absolute", testStrInDiffPrefixList("/absolute/path/nested", true, 1))
 	t.Run("no_match_import_absolute", testStrInDiffPrefixList("/absolute", false, 0))
-	t.Run("match_gostd_single_exact", testStrInDiffPrefixList("path", true, 3))
-	t.Run("match_gostd_single", testStrInDiffPrefixList("path/filepath", true, 3))
-	t.Run("no_match_gostd_single", testStrInDiffPrefixList("evil", false, 1))
-	t.Run("match_gostd_multiple_exact", testStrInDiffPrefixList("os/exec", true, 2))
-	t.Run("match_gostd_multiple", testStrInDiffPrefixList("os/exec/fake", true, 2))
-	t.Run("no_match_gostd_multiple", testStrInDiffPrefixList("os/evil", false, 1))
+	t.Run("match_root_single_exact", testStrInDiffPrefixList("path", true, 3))
+	t.Run("match_root_single", testStrInDiffPrefixList("path/filepath", true, 3))
+	t.Run("no_match_root_single", testStrInDiffPrefixList("evil", false, 1))
+	t.Run("match_root_multiple_exact", testStrInDiffPrefixList("os/exec", true, 2))
+	t.Run("match_root_multiple", testStrInDiffPrefixList("os/exec/fake", true, 2))
+	t.Run("no_match_root_multiple", testStrInDiffPrefixList("os/evil", false, 1))
 
 	// "Evil Packages"
-	t.Run("gostd_in_domain", testStrInDiffPrefixList("path.willd.io/normal/package", false, 3))
-	t.Run("gostd_in_relative", testStrInDiffPrefixList("./os/exec", false, -1))
-	t.Run("gostd_in_absolute", testStrInDiffPrefixList("/os/exec", false, 1))
+	t.Run("root_in_domain", testStrInDiffPrefixList("path.willd.io/normal/package", false, 3))
+	t.Run("root_in_relative", testStrInDiffPrefixList("./os/exec", false, -1))
+	t.Run("root_in_absolute", testStrInDiffPrefixList("/os/exec", false, 1))
 }
 
 func testStrInGlobList(str string, expect bool) func(t *testing.T) {
