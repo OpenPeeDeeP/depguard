@@ -47,7 +47,7 @@ func (ua *UncompiledAnalyzer) Compile() error {
 	return nil
 }
 
-func (s LinterSettings) run(pass *analysis.Pass) (interface{}, error) {
+func (s LinterSettings) run(pass *analysis.Pass) (any, error) {
 	settings, err := s.compile()
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func (s LinterSettings) run(pass *analysis.Pass) (interface{}, error) {
 	return settings.run(pass)
 }
 
-func newAnalyzer(run func(*analysis.Pass) (interface{}, error)) *analysis.Analyzer {
+func newAnalyzer(run func(*analysis.Pass) (any, error)) *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name:             "depguard",
 		Doc:              "Go linter that checks if package imports are in a list of acceptable packages",
@@ -65,7 +65,7 @@ func newAnalyzer(run func(*analysis.Pass) (interface{}, error)) *analysis.Analyz
 	}
 }
 
-func (s linterSettings) run(pass *analysis.Pass) (interface{}, error) {
+func (s linterSettings) run(pass *analysis.Pass) (any, error) {
 	for _, file := range pass.Files {
 		// For Windows need to replace separator with '/'
 		fileName := filepath.ToSlash(pass.Fset.Position(file.Pos()).Filename)

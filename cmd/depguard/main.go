@@ -15,8 +15,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 	depguard "github.com/OpenPeeDeeP/depguard/v2"
-	"golang.org/x/tools/go/analysis/singlechecker"
 	"go.yaml.in/yaml/v3"
+	"golang.org/x/tools/go/analysis/singlechecker"
 )
 
 var configFileRE = regexp.MustCompile(`^\.?depguard\.(yaml|yml|json|toml)$`)
@@ -85,7 +85,7 @@ func getSettings() (*depguard.LinterSettings, error) {
 	fy, f, ft, err := findFile(".")
 	if errors.Is(err, fs.ErrNotExist) {
 		arg := []string{"list", "-f", "{{.Root -}}"}
-		out, cerr := exec.Command("go", arg...).Output() 
+		out, cerr := exec.Command("go", arg...).Output()
 		if cerr != nil {
 			return nil, cerr
 		}
@@ -106,7 +106,7 @@ func getSettings() (*depguard.LinterSettings, error) {
 	return ft.parse(file)
 }
 
-// The returned filepath is relative to given base path rel, or 
+// The returned filepath is relative to given base path rel, or
 // it is absolute if rel is empty or invalid.
 func caller(rel string) (name, f string, n int) {
 	if pc, _, _, ok := runtime.Caller(1); ok {
@@ -144,8 +144,8 @@ func findFile(path string) (fs.FS, string, configurator, error) {
 	}
 	fn, fp, ln := caller(path)
 	return nil, "", nil, &fs.PathError{
-		Op: fmt.Sprintf("%s@%s:%d", fn, fp, ln),
+		Op:   fmt.Sprintf("%s@%s:%d", fn, fp, ln),
 		Path: path,
-		Err: fs.ErrNotExist,
+		Err:  fs.ErrNotExist,
 	}
 }
