@@ -3,6 +3,7 @@ package depguard
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -119,6 +120,13 @@ func (l *List) compile() (*list, error) {
 		}
 	}
 
+	if slices.Contains(li.allow, "") {
+		errs = append(errs, errors.New("allow contains an empty package"))
+	}
+	if slices.Contains(li.deny, "") {
+		errs = append(errs, errors.New("deny contains an empty package"))
+	}
+
 	// Populate the type of this list
 	if len(li.allow) == 0 && len(li.deny) == 0 {
 		errs = append(errs, errors.New("must have an Allow and/or Deny package list"))
@@ -186,7 +194,7 @@ func (l LinterSettings) compile() (linterSettings, error) {
 	for _, name := range names {
 		c, err := l[name].compile()
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 			continue
 		}
 		if c == nil {
