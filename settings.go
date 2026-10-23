@@ -71,7 +71,8 @@ func (l *List) compile() (*list, error) {
 			errs = append(errs, err)
 		}
 		for _, exp := range fs {
-			g, err := glob.Compile(exp, '/')
+			// Let /**/ also match zero directories.
+			g, err := glob.Compile(strings.ReplaceAll(exp, "/**/", "/{**/,}"), '/')
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s could not be compiled: %w", exp, err))
 				continue
