@@ -392,6 +392,15 @@ var (
 		"willd.io/normal/package",
 	}
 
+	// $gostd expands to exact matches, so they must not conflict with domains
+	// that share a prefix with a std package (https://github.com/OpenPeeDeeP/depguard/pull/115)
+	gostdList = []string{
+		"go/ast$",
+		"go/token$",
+		"go.opentelemetry.io",
+		"golang.org/x",
+	}
+
 	globList = []*glob.Pattern{
 		glob.MustCompile("some/*/a", '/'),
 		glob.MustCompile("some/**/a", '/'),
@@ -413,6 +422,18 @@ func testStrInPrefixList(str string, expect bool, expectedIdx int) func(t *testi
 func testStrInDiffPrefixList(str string, expect bool, expectedIdx int) func(t *testing.T) {
 	return func(t *testing.T) {
 		act, idx := strInPrefixList(str, diffKindsList)
+		if act != expect {
+			t.Errorf("string prefix mismatch: expected %s - got %s", strconv.FormatBool(expect), strconv.FormatBool(act))
+		}
+		if idx != expectedIdx {
+			t.Errorf("string prefix index: expected %d - got %d", expectedIdx, idx)
+		}
+	}
+}
+
+func testStrInGoStdPrefixList(str string, expect bool, expectedIdx int) func(t *testing.T) {
+	return func(t *testing.T) {
+		act, idx := strInPrefixList(str, gostdList)
 		if act != expect {
 			t.Errorf("string prefix mismatch: expected %s - got %s", strconv.FormatBool(expect), strconv.FormatBool(act))
 		}
@@ -457,6 +478,13 @@ func TestStrInPrefixList(t *testing.T) {
 	t.Run("root_in_domain", testStrInDiffPrefixList("path.willd.io/normal/package", false, 3))
 	t.Run("root_in_relative", testStrInDiffPrefixList("./os/exec", false, -1))
 	t.Run("root_in_absolute", testStrInDiffPrefixList("/os/exec", false, 1))
+
+	sort.Strings(gostdList)
+	t.Run("match_gostd_exact", testStrInGoStdPrefixList("go/token", true, 2))
+	t.Run("match_gostd_exact_first", testStrInGoStdPrefixList("go/ast", true, 1))
+	t.Run("no_match_gostd_nested", testStrInGoStdPrefixList("go/token/fake", false, 2))
+	t.Run("match_gostd_shared_prefix_domain", testStrInGoStdPrefixList("go.opentelemetry.io/otel", true, 0))
+	t.Run("match_gostd_after_domain", testStrInGoStdPrefixList("golang.org/x/tools", true, 3))
 }
 
 func testStrInGlobList(str string, expect bool) func(t *testing.T) {

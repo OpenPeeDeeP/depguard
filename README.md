@@ -99,7 +99,10 @@ use it. Example `!$test` will match any file that is not a go test file.
 
 #### Package Variables
 
-- `$gostd` - matches all of go's standard library (Pulled from GOROOT)
+- `$gostd` - matches all of go's standard library packages exactly (each one as if
+it ended with `$`). If the `GOROOT` environment variable is set, packages are read
+from `$GOROOT/src`, otherwise they come from `go list std` using the go toolchain
+for the current directory. Internal, vendored, and `cmd` packages are not included.
 
 ### Example Configs
 
