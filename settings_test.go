@@ -2,20 +2,21 @@ package depguard
 
 import (
 	"errors"
-	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/OpenPeeDeeP/depguard/v2/internal/utils"
 	"github.com/gobwas/glob"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 type listCompileScenario struct {
 	name   string
 	list   *List
 	exp    *list
+	allow  []string          // entries (as written) that must be allowed by the compiled tree
+	deny   map[string]string // entries (as written) that must be denied, with their suggestion
 	expErr error
 }
 
@@ -23,6 +24,7 @@ type settingsCompileScenario struct {
 	name     string
 	settings LinterSettings
 	exp      linterSettings
+	allow    map[string][]string // allow entries (as written) expected per list name
 	expErr   error
 }
 
@@ -48,9 +50,11 @@ var (
 				},
 			},
 			exp: &list{
-				allow:       []string{"os"},
-				deny:        []string{"reflect"},
-				suggestions: []string{"Don't use Reflect"},
+				anyAllows: true,
+			},
+			allow: []string{"os"},
+			deny: map[string]string{
+				"reflect": "Don't use Reflect",
 			},
 		},
 		{
@@ -63,8 +67,9 @@ var (
 				files: []*glob.Pattern{
 					glob.MustCompile("**/*.go", '/'),
 				},
-				allow: []string{"os"},
+				anyAllows: true,
 			},
+			allow: []string{"os"},
 		},
 		{
 			name: "Expanded Negate Files",
@@ -76,8 +81,9 @@ var (
 				negFiles: []*glob.Pattern{
 					glob.MustCompile("**/*_test.go", '/'),
 				},
-				allow: []string{"os"},
+				anyAllows: true,
 			},
+			allow: []string{"os"},
 		},
 		{
 			name: "Normal and Negatable Files",
@@ -92,8 +98,9 @@ var (
 				negFiles: []*glob.Pattern{
 					glob.MustCompile("**/bar.go", '/'),
 				},
-				allow: []string{"os"},
+				anyAllows: true,
 			},
+			allow: []string{"os"},
 		},
 		{
 			name: "Failure to Compile File Glob",
@@ -108,17 +115,19 @@ var (
 				Allow: []string{"$gostd"},
 			},
 			exp: &list{
-				allow: []string{"FIND ME", "FIND ME TOO"},
+				anyAllows: true,
 			},
+			allow: []string{"FIND ME", "FIND ME TOO"},
 		},
 		{
 			name: "Expanded Deny",
 			list: &List{
 				Deny: map[string]string{"$gostd": "Don't use standard"},
 			},
-			exp: &list{
-				deny:        []string{"FIND ME", "FIND ME TOO"},
-				suggestions: []string{"Don't use standard", "Don't use standard"},
+			exp: &list{},
+			deny: map[string]string{
+				"FIND ME":     "Don't use standard",
+				"FIND ME TOO": "Don't use standard",
 			},
 		},
 		{
@@ -128,9 +137,9 @@ var (
 					"reflect": "Don't use Reflect",
 				},
 			},
-			exp: &list{
-				deny:        []string{"reflect"},
-				suggestions: []string{"Don't use Reflect"},
+			exp: &list{},
+			deny: map[string]string{
+				"reflect": "Don't use Reflect",
 			},
 		},
 		{
@@ -139,8 +148,9 @@ var (
 				Allow: []string{"os"},
 			},
 			exp: &list{
-				allow: []string{"os"},
+				anyAllows: true,
 			},
+			allow: []string{"os"},
 		},
 		{
 			name: "Allow And Deny",
@@ -158,9 +168,11 @@ var (
 				negFiles: []*glob.Pattern{
 					glob.MustCompile("**/*_test.go", '/'),
 				},
-				allow:       []string{"os"},
-				deny:        []string{"reflect"},
-				suggestions: []string{"Don't use Reflect"},
+				anyAllows: true,
+			},
+			allow: []string{"os"},
+			deny: map[string]string{
+				"reflect": "Don't use Reflect",
 			},
 		},
 		{
@@ -172,10 +184,12 @@ var (
 				},
 			},
 			exp: &list{
-				listMode:    listModeOriginal,
-				allow:       []string{"os"},
-				deny:        []string{"reflect"},
-				suggestions: []string{"Don't use Reflect"},
+				listMode:  listModeOriginal,
+				anyAllows: true,
+			},
+			allow: []string{"os"},
+			deny: map[string]string{
+				"reflect": "Don't use Reflect",
 			},
 		},
 		{
@@ -188,10 +202,12 @@ var (
 				},
 			},
 			exp: &list{
-				listMode:    listModeOriginal,
-				allow:       []string{"os"},
-				deny:        []string{"reflect"},
-				suggestions: []string{"Don't use Reflect"},
+				listMode:  listModeOriginal,
+				anyAllows: true,
+			},
+			allow: []string{"os"},
+			deny: map[string]string{
+				"reflect": "Don't use Reflect",
 			},
 		},
 		{
@@ -204,10 +220,12 @@ var (
 				},
 			},
 			exp: &list{
-				listMode:    listModeStrict,
-				allow:       []string{"os"},
-				deny:        []string{"reflect"},
-				suggestions: []string{"Don't use Reflect"},
+				listMode:  listModeStrict,
+				anyAllows: true,
+			},
+			allow: []string{"os"},
+			deny: map[string]string{
+				"reflect": "Don't use Reflect",
 			},
 		},
 		{
@@ -220,10 +238,12 @@ var (
 				},
 			},
 			exp: &list{
-				listMode:    listModeLax,
-				allow:       []string{"os"},
-				deny:        []string{"reflect"},
-				suggestions: []string{"Don't use Reflect"},
+				listMode:  listModeLax,
+				anyAllows: true,
+			},
+			allow: []string{"os"},
+			deny: map[string]string{
+				"reflect": "Don't use Reflect",
 			},
 		},
 		{
@@ -261,9 +281,10 @@ var (
 					files: []*glob.Pattern{
 						glob.MustCompile("**/*.go", '/'),
 					},
-					allow: []string{"FIND ME", "FIND ME TOO"},
+					anyAllows: true,
 				},
 			},
+			allow: map[string][]string{"Main": {"FIND ME", "FIND ME TOO"}},
 		},
 		{
 			name: "Name is injected",
@@ -283,16 +304,17 @@ var (
 					files: []*glob.Pattern{
 						glob.MustCompile("**/*.go", '/'),
 					},
-					allow: []string{"os"},
+					anyAllows: true,
 				},
 				{
 					name: "Test",
 					files: []*glob.Pattern{
 						glob.MustCompile("**/*_test.go", '/'),
 					},
-					allow: []string{"os"},
+					anyAllows: true,
 				},
 			},
+			allow: map[string][]string{"Main": {"os"}, "Test": {"os"}},
 		},
 		{
 			name: "Error names the list",
@@ -321,9 +343,37 @@ func testListCompile(s *listCompileScenario) func(*testing.T) {
 		if err != nil {
 			t.Fatal("not expecting an error")
 		}
-		diff := cmp.Diff(s.exp, act, cmp.AllowUnexported(list{}), cmp.Comparer(cmpGlobPattern))
+		diff := cmp.Diff(s.exp, act, cmp.AllowUnexported(list{}), cmp.Comparer(cmpGlobPattern), ignoreCompiledEntries)
 		if diff != "" {
 			t.Errorf("compiled list is not what was expected\n%s", diff)
+		}
+		checkCompiledEntries(t, act, s.allow, s.deny)
+	}
+}
+
+// The tree and suggestions are checked by behavior in checkCompiledEntries, as
+// the suggestion indexes depend on map iteration order.
+var ignoreCompiledEntries = cmpopts.IgnoreFields(list{}, "tree", "suggestions")
+
+func checkCompiledEntries(t *testing.T, li *list, allow []string, deny map[string]string) {
+	t.Helper()
+	if len(li.suggestions) != len(deny) {
+		t.Errorf("expected %d deny entries - got %d suggestions %v", len(deny), len(li.suggestions), li.suggestions)
+	}
+	for _, a := range allow {
+		allowLen, _, _ := li.tree.Search(strings.TrimSuffix(a, "$"))
+		if allowLen != len(a) {
+			t.Errorf("expected %q to be an allow entry: allow length %d", a, allowLen)
+		}
+	}
+	for d, sug := range deny {
+		_, denyLen, sugIdx := li.tree.Search(strings.TrimSuffix(d, "$"))
+		if denyLen != len(d) {
+			t.Errorf("expected %q to be a deny entry: deny length %d", d, denyLen)
+			continue
+		}
+		if sugIdx < 0 || sugIdx >= len(li.suggestions) || li.suggestions[sugIdx] != sug {
+			t.Errorf("expected %q to suggest %q: suggestion index %d of %v", d, sug, sugIdx, li.suggestions)
 		}
 	}
 }
@@ -343,9 +393,12 @@ func testSettingsCompile(s *settingsCompileScenario) func(*testing.T) {
 		if err != nil {
 			t.Fatal("not expecting an error")
 		}
-		diff := cmp.Diff(s.exp, act, cmp.AllowUnexported(list{}), cmp.Comparer(cmpGlobPattern))
+		diff := cmp.Diff(s.exp, act, cmp.AllowUnexported(list{}), cmp.Comparer(cmpGlobPattern), ignoreCompiledEntries)
 		if diff != "" {
 			t.Errorf("compiled settings is not what was expected\n%s", diff)
+		}
+		for _, li := range act {
+			checkCompiledEntries(t, li, s.allow[li.name], nil)
 		}
 	}
 }
@@ -374,118 +427,11 @@ func TestLinterSettingsCompile(t *testing.T) {
 }
 
 var (
-	prefixList = []string{
-		"willd.io/package/a",
-		"willd.io/package/b",
-		"willd.io/package/c/",
-		"willd.io/package/d$",
-		"willd.io/pkg/c",
-		"willd.io/pkg/d",
-		"willd.io/pkg/e",
-	}
-
-	diffKindsList = []string{
-		"./relative/path",
-		"/absolute/path",
-		"os/exec",
-		"path",
-		"willd.io/normal/package",
-	}
-
-	// $gostd expands to exact matches, so they must not conflict with domains
-	// that share a prefix with a std package (https://github.com/OpenPeeDeeP/depguard/pull/115)
-	gostdList = []string{
-		"go/ast$",
-		"go/token$",
-		"go.opentelemetry.io",
-		"golang.org/x",
-	}
-
 	globList = []*glob.Pattern{
 		glob.MustCompile("some/*/a", '/'),
 		glob.MustCompile("some/**/a", '/'),
 	}
 )
-
-func testStrInPrefixList(str string, expect bool, expectedIdx int) func(t *testing.T) {
-	return func(t *testing.T) {
-		act, idx := strInPrefixList(str, prefixList)
-		if act != expect {
-			t.Errorf("string prefix mismatch: expected %s - got %s", strconv.FormatBool(expect), strconv.FormatBool(act))
-		}
-		if idx != expectedIdx {
-			t.Errorf("string prefix index: expected %d - got %d", expectedIdx, idx)
-		}
-	}
-}
-
-func testStrInDiffPrefixList(str string, expect bool, expectedIdx int) func(t *testing.T) {
-	return func(t *testing.T) {
-		act, idx := strInPrefixList(str, diffKindsList)
-		if act != expect {
-			t.Errorf("string prefix mismatch: expected %s - got %s", strconv.FormatBool(expect), strconv.FormatBool(act))
-		}
-		if idx != expectedIdx {
-			t.Errorf("string prefix index: expected %d - got %d", expectedIdx, idx)
-		}
-	}
-}
-
-func testStrInGoStdPrefixList(str string, expect bool, expectedIdx int) func(t *testing.T) {
-	return func(t *testing.T) {
-		act, idx := strInPrefixList(str, gostdList)
-		if act != expect {
-			t.Errorf("string prefix mismatch: expected %s - got %s", strconv.FormatBool(expect), strconv.FormatBool(act))
-		}
-		if idx != expectedIdx {
-			t.Errorf("string prefix index: expected %d - got %d", expectedIdx, idx)
-		}
-	}
-}
-
-func TestStrInPrefixList(t *testing.T) {
-	sort.Strings(prefixList)
-	t.Run("full_match_start", testStrInPrefixList("willd.io/package/a", true, 0))
-	t.Run("full_match", testStrInPrefixList("willd.io/package/b", true, 1))
-	t.Run("full_match_end", testStrInPrefixList("willd.io/pkg/e", true, 6))
-	t.Run("no_match_end", testStrInPrefixList("zilld.io/pkg/e", false, 6))
-	t.Run("no_match_start", testStrInPrefixList("ailld.io/pkg/e", false, -1))
-	t.Run("match_start", testStrInPrefixList("willd.io/package/a/files", true, 0))
-	t.Run("match_middle", testStrInPrefixList("willd.io/pkg/c/files", true, 4))
-	t.Run("match_end", testStrInPrefixList("willd.io/pkg/e/files", true, 6))
-	t.Run("no_match_trailing", testStrInPrefixList("willd.io/package/c", false, 1))
-	t.Run("match_exact", testStrInPrefixList("willd.io/package/d", true, 3))
-	t.Run("no_prefix_match_exact", testStrInPrefixList("willd.io/package/d/something", false, 3))
-
-	sort.Strings(diffKindsList)
-	t.Run("match_import_with_domain_exact", testStrInDiffPrefixList("willd.io/normal/package", true, 4))
-	t.Run("match_import_with_domain", testStrInDiffPrefixList("willd.io/normal/package/nested", true, 4))
-	t.Run("no_match_import_with_domain", testStrInDiffPrefixList("willd.io/normal", false, 3))
-	t.Run("match_import_relative_exact", testStrInDiffPrefixList("./relative/path", true, 0))
-	t.Run("match_import_relative", testStrInDiffPrefixList("./relative/path/nested", true, 0))
-	t.Run("no_match_import_relative", testStrInDiffPrefixList("./relative", false, -1))
-	t.Run("match_import_absolute_exact", testStrInDiffPrefixList("/absolute/path", true, 1))
-	t.Run("match_import_absolute", testStrInDiffPrefixList("/absolute/path/nested", true, 1))
-	t.Run("no_match_import_absolute", testStrInDiffPrefixList("/absolute", false, 0))
-	t.Run("match_root_single_exact", testStrInDiffPrefixList("path", true, 3))
-	t.Run("match_root_single", testStrInDiffPrefixList("path/filepath", true, 3))
-	t.Run("no_match_root_single", testStrInDiffPrefixList("evil", false, 1))
-	t.Run("match_root_multiple_exact", testStrInDiffPrefixList("os/exec", true, 2))
-	t.Run("match_root_multiple", testStrInDiffPrefixList("os/exec/fake", true, 2))
-	t.Run("no_match_root_multiple", testStrInDiffPrefixList("os/evil", false, 1))
-
-	// "Evil Packages"
-	t.Run("root_in_domain", testStrInDiffPrefixList("path.willd.io/normal/package", false, 3))
-	t.Run("root_in_relative", testStrInDiffPrefixList("./os/exec", false, -1))
-	t.Run("root_in_absolute", testStrInDiffPrefixList("/os/exec", false, 1))
-
-	sort.Strings(gostdList)
-	t.Run("match_gostd_exact", testStrInGoStdPrefixList("go/token", true, 2))
-	t.Run("match_gostd_exact_first", testStrInGoStdPrefixList("go/ast", true, 1))
-	t.Run("no_match_gostd_nested", testStrInGoStdPrefixList("go/token/fake", false, 2))
-	t.Run("match_gostd_shared_prefix_domain", testStrInGoStdPrefixList("go.opentelemetry.io/otel", true, 0))
-	t.Run("match_gostd_after_domain", testStrInGoStdPrefixList("golang.org/x/tools", true, 3))
-}
 
 func testStrInGlobList(str string, expect bool) func(t *testing.T) {
 	return func(t *testing.T) {
@@ -969,6 +915,95 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 				name:    "check for out of bounds",
 				input:   "aaa/pkg/e/alpha",
 				allowed: true,
+			},
+		},
+	},
+	{
+		name: "Nested deny in Lax mode denies every subpackage of the root",
+		setup: &List{
+			ListMode: "Lax",
+			Deny: map[string]string{
+				"some/pkg/a":      "root a",
+				"some/pkg/a/foo":  "nested a",
+				"some/pkg/b/":     "root b",
+				"some/pkg/b/foo$": "exact b",
+			},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:       "nested subpackage uses nested suggestion",
+				input:      "some/pkg/a/foo/bar",
+				allowed:    false,
+				suggestion: "nested a",
+			},
+			{
+				name:       "sibling sorted before nested",
+				input:      "some/pkg/a/bar",
+				allowed:    false,
+				suggestion: "root a",
+			},
+			{
+				name:       "sibling sorted after nested",
+				input:      "some/pkg/a/zed",
+				allowed:    false,
+				suggestion: "root a",
+			},
+			{
+				name:       "nested exact match uses exact suggestion",
+				input:      "some/pkg/b/foo",
+				allowed:    false,
+				suggestion: "exact b",
+			},
+			{
+				name:       "sibling sorted before nested exact",
+				input:      "some/pkg/b/bar",
+				allowed:    false,
+				suggestion: "root b",
+			},
+			{
+				name:       "sibling sorted after nested exact",
+				input:      "some/pkg/b/zed",
+				allowed:    false,
+				suggestion: "root b",
+			},
+			{
+				name:       "subpackage of nested exact",
+				input:      "some/pkg/b/foo/bar",
+				allowed:    false,
+				suggestion: "root b",
+			},
+		},
+	},
+	{
+		name: "Nested allow in Strict mode allows every subpackage of the root",
+		setup: &List{
+			ListMode: "Strict",
+			Allow:    []string{"some/pkg/a/", "some/pkg/a/foo/"},
+			Deny: map[string]string{
+				"some/pkg/a/bar/": "not bar",
+			},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:    "nested subpackage",
+				input:   "some/pkg/a/foo/x",
+				allowed: true,
+			},
+			{
+				name:    "sibling sorted before nested",
+				input:   "some/pkg/a/baz",
+				allowed: true,
+			},
+			{
+				name:    "sibling sorted after nested",
+				input:   "some/pkg/a/zed",
+				allowed: true,
+			},
+			{
+				name:       "denied subpackage of allowed root",
+				input:      "some/pkg/a/bar/x",
+				allowed:    false,
+				suggestion: "not bar",
 			},
 		},
 	},
