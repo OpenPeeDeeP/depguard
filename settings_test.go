@@ -631,7 +631,7 @@ func TestListFileMatch(t *testing.T) {
 
 type listImportAllowedScenario struct {
 	name  string
-	setup *list
+	setup *List
 	tests []*listImportAllowedScenarioInner
 }
 
@@ -645,9 +645,11 @@ type listImportAllowedScenarioInner struct {
 var listImportAllowedScenarios = []*listImportAllowedScenario{
 	{
 		name: "Empty allow in Original matches anything not in deny",
-		setup: &list{
-			deny:        []string{"some/pkg/a", "some/pkg/b$"},
-			suggestions: []string{"because I said so", "please use newer version"},
+		setup: &List{
+			Deny: map[string]string{
+				"some/pkg/a":  "because I said so",
+				"some/pkg/b$": "please use newer version",
+			},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -671,8 +673,8 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	},
 	{
 		name: "Empty deny in Original only matches what is in allow",
-		setup: &list{
-			allow: []string{"some/pkg/a", "some/pkg/b$"},
+		setup: &List{
+			Allow: []string{"some/pkg/a", "some/pkg/b$"},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -694,11 +696,14 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	},
 	{
 		name: "Both in Original mode allows what is in allow and not in deny",
-		setup: &list{
-			listMode:    listModeOriginal,
-			allow:       []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
-			deny:        []string{"some/pkg/a", "some/pkg/b/foo", "some/pkg/d"},
-			suggestions: []string{"because I said so", "really don't use", "common"},
+		setup: &List{
+			ListMode: "Original",
+			Allow:    []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
+			Deny: map[string]string{
+				"some/pkg/a":     "because I said so",
+				"some/pkg/b/foo": "really don't use",
+				"some/pkg/d":     "common",
+			},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -749,10 +754,12 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	},
 	{
 		name: "Empty allow in Strict matches nothing",
-		setup: &list{
-			listMode:    listModeStrict,
-			deny:        []string{"some/pkg/a", "some/pkg/b$"},
-			suggestions: []string{"because I said so", "please use newer version"},
+		setup: &List{
+			ListMode: "Strict",
+			Deny: map[string]string{
+				"some/pkg/a":  "because I said so",
+				"some/pkg/b$": "please use newer version",
+			},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -776,9 +783,9 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	},
 	{
 		name: "Empty deny in Strict only matches what is in allow",
-		setup: &list{
-			listMode: listModeStrict,
-			allow:    []string{"some/pkg/a", "some/pkg/b$"},
+		setup: &List{
+			ListMode: "Strict",
+			Allow:    []string{"some/pkg/a", "some/pkg/b$"},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -800,11 +807,14 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	},
 	{
 		name: "Both in Strict mode allows what is in allow and not in deny",
-		setup: &list{
-			listMode:    listModeStrict,
-			allow:       []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
-			deny:        []string{"some/pkg/a", "some/pkg/b/foo", "some/pkg/d"},
-			suggestions: []string{"because I said so", "really don't use", "common"},
+		setup: &List{
+			ListMode: "Strict",
+			Allow:    []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
+			Deny: map[string]string{
+				"some/pkg/a":     "because I said so",
+				"some/pkg/b/foo": "really don't use",
+				"some/pkg/d":     "common",
+			},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -854,10 +864,12 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	},
 	{
 		name: "Empty allow in Lax matches anything not in deny",
-		setup: &list{
-			listMode:    listModeLax,
-			deny:        []string{"some/pkg/a", "some/pkg/b$"},
-			suggestions: []string{"because I said so", "please use newer version"},
+		setup: &List{
+			ListMode: "Lax",
+			Deny: map[string]string{
+				"some/pkg/a":  "because I said so",
+				"some/pkg/b$": "please use newer version",
+			},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -881,9 +893,9 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	},
 	{
 		name: "Empty deny in Lax matches everything",
-		setup: &list{
-			listMode: listModeLax,
-			allow:    []string{"some/pkg/a", "some/pkg/b$"},
+		setup: &List{
+			ListMode: "Lax",
+			Allow:    []string{"some/pkg/a", "some/pkg/b$"},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -905,11 +917,14 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 	},
 	{
 		name: "Both in Lax mode allows what is in allow and not in deny",
-		setup: &list{
-			listMode:    listModeLax,
-			allow:       []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
-			deny:        []string{"some/pkg/a", "some/pkg/b/foo", "some/pkg/d"},
-			suggestions: []string{"because I said so", "really don't use", "common"},
+		setup: &List{
+			ListMode: "Lax",
+			Allow:    []string{"some/pkg/a/foo", "some/pkg/b", "some/pkg/c"},
+			Deny: map[string]string{
+				"some/pkg/a":     "because I said so",
+				"some/pkg/b/foo": "really don't use",
+				"some/pkg/d":     "common",
+			},
 		},
 		tests: []*listImportAllowedScenarioInner{
 			{
@@ -957,14 +972,41 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 			},
 		},
 	},
+	{
+		name: "Exact match wins a tie in Strict mode",
+		setup: &List{
+			ListMode: "Strict",
+			Allow:    []string{"some/pkg/e$"},
+			Deny: map[string]string{
+				"some/pkg/e": "use some/pkg/f",
+			},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{
+				name:    "exact allow beats same prefix deny",
+				input:   "some/pkg/e",
+				allowed: true,
+			},
+			{
+				name:       "subpackage only matches deny",
+				input:      "some/pkg/e/x",
+				allowed:    false,
+				suggestion: "use some/pkg/f",
+			},
+		},
+	},
 }
 
 func TestListImportAllowed(t *testing.T) {
 	for _, s := range listImportAllowedScenarios {
 		t.Run(s.name, func(ts *testing.T) {
+			li, err := s.setup.compile()
+			if err != nil {
+				ts.Fatalf("could not compile list: %s", err)
+			}
 			for _, sc := range s.tests {
 				ts.Run(sc.name, func(tst *testing.T) {
-					act, sugg := s.setup.importAllowed(sc.input)
+					act, sugg := li.importAllowed(sc.input)
 					if act != sc.allowed {
 						tst.Error("Did not return expected result")
 					}
