@@ -58,16 +58,8 @@ will match a list if it is allowed and not denied.
 
 > Should always prefix a file glob with `**/` as files are matched against absolute paths.
 
-Allow is a prefix of packages to allow. A dollar sign `$` can be used at the end
-of a package to specify it must be exact match only.
-
-Deny is a map where the key is a prefix of the package to deny, and the value
-is a suggestion on what to use instead. A dollar sign `$` can be used at the end
-of a package to specify it must be exact match only.
-
-A Prefix List just means that a package will match a value, if the value is a 
-prefix of the package. Example `github.com/OpenPeeDeeP/depguard` package will match
-a value of `github.com/OpenPeeDeeP` but won't match `github.com/OpenPeeDeeP/depguard/v2`.
+Allow is a list of packages to allow. Deny is a map where the key is a package
+to deny, and the value is a suggestion on what to use instead (it can be empty).
 
 ListMode is used to determine the package matching priority. There are three
 different modes; Original, Strict, and Lax.
@@ -79,10 +71,67 @@ Strict, at its roots, is everything is denied unless in allowed.
 
 Lax, at its roots, is everything is allowed unless it is denied.
 
-There are cases where a package can be matched in both the allow and denied lists.
-You may allow a subpackage but deny the root or vice versa. The `settings_tests.go` file
-has many scenarios listed out under `TestListImportAllowed`. These tests will stay
-up to date as features are added.
+### How Package Matching Works
+
+Every `allow` and `deny` entry is a **prefix**: it matches an import if the
+import path starts with it. This is a plain string comparison, it does not look
+at path segments. End an entry with a dollar sign `$` to match that exact
+package only. Matching is case-sensitive, like Go import paths, so use the
+package's exact casing (`github.com/OpenPeeDeeP/`, not `github.com/openpeedeep/`).
+
+| Entry | Matches | Does not match |
+|---|---|---|
+| `github.com/bob` | `github.com/bob`, `github.com/bob/pkg`, `github.com/bob2/pkg` | |
+| `github.com/bob/` | `github.com/bob/pkg` | `github.com/bob`, `github.com/bob2/pkg` |
+| `github.com/bob$` | `github.com/bob` | `github.com/bob/pkg`, `github.com/bob2/pkg` |
+
+Some things to keep in mind:
+
+- To match a package and all of its subpackages, but nothing else, use two
+entries: `github.com/bob$` and `github.com/bob/`.
+- A new major version shares the old version's prefix. `math/rand` also matches
+`math/rand/v2`, so deny `math/rand$` to only deny the old version.
+- Entries without a dot or slash are prefixes too: `os` matches `os/exec`, but
+also `osext` and `os.example.com/pkg`. For the standard library, prefer `$gostd`
+(which lists each package exactly) or `os$` and `os/`.
+
+#### An Import Matching More Than One Entry
+
+Within a list, the **longest** matching entry is used. With this deny list:
+
+```yaml
+deny:
+  github.com/org/legacy/: "use github.com/org/v2"
+  github.com/org/legacy/auth/: "use github.com/org/authn"
+```
+
+`github.com/org/legacy/auth/token` gets the `authn` suggestion, and every other
+package under `github.com/org/legacy/` gets the `v2` suggestion.
+
+When an import matches both the allow and deny lists, the list mode decides:
+
+- **Original:** deny always wins. An empty allow list allows everything.
+- **Strict:** the import must match an allow entry. If it also matches a deny
+entry, it is only allowed when the allow entry is longer (more specific) than
+the deny entry.
+- **Lax:** the import is allowed unless it matches a deny entry. If it also
+matches an allow entry that is longer than the deny entry, it is allowed.
+
+An exact entry counts as one character longer than the same entry without the
+`$`, so `allow: [foo$]` beats `deny: {foo: ...}` for the import `foo` itself, but
+`foo/bar` is still denied. Entries of the same length are denied.
+
+For example, in Strict mode with `allow: [github.com/org/]` and
+`deny: {github.com/org/legacy/: ...}`, `github.com/org/api` is allowed and
+`github.com/org/legacy/db` is denied. The `settings_test.go` file has many more
+scenarios under `TestListImportAllowed`.
+
+#### A File Matching More Than One List
+
+Each list a file matches is checked on its own, and an import must be allowed
+by **all** of them. Every list that denies it reports its own error. Put the
+rules every file shares in one list (for example with `$all`), and add separate
+lists for the extra rules of a subset of files (for example `$test`).
 
 ### Variables
 
