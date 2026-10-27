@@ -558,6 +558,106 @@ var listFileMatchScenarios = []*listFileMatchScenario{
 			},
 		},
 	},
+	{
+		name: "Double star between slashes needs at least one folder",
+		setup: &list{
+			files: []*glob.Pattern{
+				glob.MustCompile("**/internal/**/*.go", '/'),
+			},
+		},
+		tests: []*listFileMatchScenarioInner{
+			{
+				name:     "zero folders",
+				input:    "/home/user/project/internal/a.go",
+				expected: false,
+			},
+			{
+				name:     "one folder",
+				input:    "/home/user/project/internal/foo/a.go",
+				expected: true,
+			},
+			{
+				name:     "many folders",
+				input:    "/home/user/project/internal/foo/bar/a.go",
+				expected: true,
+			},
+		},
+	},
+	{
+		name: "Optional double star matches zero or more folders",
+		setup: &list{
+			files: []*glob.Pattern{
+				glob.MustCompile("**/internal/{**/,}*.go", '/'),
+			},
+		},
+		tests: []*listFileMatchScenarioInner{
+			{
+				name:     "zero folders",
+				input:    "/home/user/project/internal/a.go",
+				expected: true,
+			},
+			{
+				name:     "one folder",
+				input:    "/home/user/project/internal/foo/a.go",
+				expected: true,
+			},
+			{
+				name:     "many folders",
+				input:    "/home/user/project/internal/foo/bar/a.go",
+				expected: true,
+			},
+			{
+				name:     "outside the folder",
+				input:    "/home/user/project/external/a.go",
+				expected: false,
+			},
+		},
+	},
+	{
+		name: "Optional double star with the slash outside the braces still needs a folder",
+		setup: &list{
+			files: []*glob.Pattern{
+				glob.MustCompile("**/internal/{**,}/*.go", '/'),
+			},
+		},
+		tests: []*listFileMatchScenarioInner{
+			{
+				name:     "zero folders",
+				input:    "/home/user/project/internal/a.go",
+				expected: false,
+			},
+			{
+				name:     "one folder",
+				input:    "/home/user/project/internal/foo/a.go",
+				expected: true,
+			},
+		},
+	},
+	{
+		name: "Optional double star in a negated glob",
+		setup: &list{
+			negFiles: []*glob.Pattern{
+				glob.MustCompile("**/internal/{**/,}*.go", '/'),
+			},
+		},
+		tests: []*listFileMatchScenarioInner{
+			{
+				name:     "zero folders",
+				input:    "/home/user/project/internal/a.go",
+				expected: false,
+			},
+			{
+				name:     "one folder",
+				input:    "/home/user/project/internal/foo/a.go",
+				expected: false,
+			},
+			{
+				name:     "outside the folder",
+				input:    "/home/user/project/external/a.go",
+				expected: true,
+			},
+		},
+	},
 }
 
 func TestListFileMatch(t *testing.T) {

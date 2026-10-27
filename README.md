@@ -58,6 +58,20 @@ will match a list if it is allowed and not denied.
 
 > Should always prefix a file glob with `**/` as files are matched against absolute paths.
 
+`**` matches any number of characters, including `/`, but it doesn't make the
+slashes around it optional. So `**/internal/**/*.go` matches
+`internal/foo/a.go` but not `internal/a.go`: there has to be at least one folder
+between `internal/` and the file. To match zero or more folders, put the slash
+inside a brace group with an empty option: `**/internal/{**/,}*.go`.
+
+| Glob | `/project/internal/a.go` | `/project/internal/foo/a.go` |
+|---|---|---|
+| `**/internal/**/*.go` | no | yes |
+| `**/internal/{**/,}*.go` | yes | yes |
+| `**/internal/{**,}/*.go` | no | yes |
+
+The last one doesn't work because the empty option leaves `internal//*.go`.
+
 Allow is a list of packages to allow. Deny is a map where the key is a package
 to deny, and the value is a suggestion on what to use instead (it can be empty).
 
@@ -193,7 +207,7 @@ Main:
   - $all
 Internal:
   files:
-  - "**/internal/**/*.go"
+  - "**/internal/{**/,}*.go"
 ```
 
 Below:
