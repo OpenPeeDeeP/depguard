@@ -1108,6 +1108,20 @@ var listImportAllowedScenarios = []*listImportAllowedScenario{
 		},
 	},
 	{
+		// Matching rules from the README not covered by the scenarios above
+		name: "Settled matching rules in Strict mode",
+		setup: &List{
+			ListMode: "Strict",
+			Allow:    []string{"github.com/bob", "github.com/team/", "same/len"},
+			Deny:     map[string]string{"same/len": "tie goes to deny"},
+		},
+		tests: []*listImportAllowedScenarioInner{
+			{name: "raw prefix matches a longer name (#2)", input: "github.com/bob2", allowed: true},
+			{name: "trailing slash skips the root package (#113)", input: "github.com/team", allowed: false},
+			{name: "equal length allow and deny is denied", input: "same/len", allowed: false, suggestion: "tie goes to deny"},
+		},
+	},
+	{
 		name: "Exact match wins a tie in Strict mode",
 		setup: &List{
 			ListMode: "Strict",
