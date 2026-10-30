@@ -167,6 +167,10 @@ it ended with `$`). If the `GOROOT` environment variable is set, packages are re
 from `$GOROOT/src`, otherwise they come from `go list std` using the go toolchain
 for the current directory. Internal, vendored, and `cmd` packages are not included.
 
+An entry you write yourself takes priority over the same entry from a variable. With
+`deny: {$gostd: "no std", net/http$: "use our client"}`, `net/http` gets the
+`use our client` suggestion and every other standard library package gets `no std`.
+
 ### Example Configs
 
 Below:
