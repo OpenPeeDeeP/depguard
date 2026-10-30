@@ -3,6 +3,7 @@ package depguard
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/OpenPeeDeeP/depguard/v2/internal/utils"
@@ -271,6 +272,20 @@ var (
 			},
 			expErr: errors.New("deny contains an empty package"),
 		},
+		{
+			name: "Allow Package Only $",
+			list: &List{
+				Allow: []string{"os", "$"},
+			},
+			expErr: errors.New("allow contains a package with only $"),
+		},
+		{
+			name: "Deny Package Only $",
+			list: &List{
+				Deny: map[string]string{"os": "no os", "$": "no pkg"},
+			},
+			expErr: errors.New("deny contains a package with only $"),
+		},
 	}
 	settingsCompileScenarios = []*settingsCompileScenario{
 		{
@@ -351,29 +366,60 @@ func testListCompile(s *listCompileScenario) func(*testing.T) {
 	}
 }
 
-// The tree and suggestions are checked by behavior in checkCompiledEntries, as
-// the suggestion indexes depend on map iteration order.
-var ignoreCompiledEntries = cmpopts.IgnoreFields(list{}, "tree", "suggestions")
+// The tree, suggestions and rules are checked by behavior in
+// checkCompiledEntries, as the suggestion indexes depend on map iteration
+// order.
+var ignoreCompiledEntries = cmpopts.IgnoreFields(list{}, "tree", "suggestions", "rules")
+
+// keyRules returns the rules on the tree node for key: the span the walk
+// reports where the key ends.
+func keyRules(li *list, key string) []rule {
+	var rules []rule
+	li.tree.Walk(key, func(start, end uint32, atEnd bool) {
+		if atEnd {
+			rules = li.rules[start:end]
+		}
+	})
+	return rules
+}
+
+// hasRule reports whether entry (as written, with any $) compiled to a rule of
+// kind on its key's node, and returns it.
+func hasRule(li *list, entry string, kind ruleKind) (rule, bool) {
+	key, exact := strings.CutSuffix(entry, "$")
+	for _, r := range keyRules(li, key) {
+		if r.kind == kind && r.exact == exact && int(r.length) == len(entry) {
+			return r, true
+		}
+	}
+	return rule{}, false
+}
 
 func checkCompiledEntries(t *testing.T, li *list, allow []string, deny map[string]string) {
 	t.Helper()
-	if len(li.suggestions) != len(deny) {
-		t.Errorf("expected %d deny entries - got %d suggestions %v", len(deny), len(li.suggestions), li.suggestions)
+	// Entries from one variable share a suggestion, so count the deny rules
+	denyRules := 0
+	for _, r := range li.rules {
+		if r.kind == ruleDeny {
+			denyRules++
+		}
+	}
+	if denyRules != len(deny) {
+		t.Errorf("expected %d deny entries - got %d deny rules", len(deny), denyRules)
 	}
 	for _, a := range allow {
-		allowLen, _, _ := li.tree.Search(strings.TrimSuffix(a, "$"))
-		if allowLen != len(a) {
-			t.Errorf("expected %q to be an allow entry: allow length %d", a, allowLen)
+		if _, ok := hasRule(li, a, ruleAllow); !ok {
+			t.Errorf("expected %q to be an allow entry: rules on its node %v", a, keyRules(li, strings.TrimSuffix(a, "$")))
 		}
 	}
 	for d, sug := range deny {
-		_, denyLen, sugIdx := li.tree.Search(strings.TrimSuffix(d, "$"))
-		if denyLen != len(d) {
-			t.Errorf("expected %q to be a deny entry: deny length %d", d, denyLen)
+		r, ok := hasRule(li, d, ruleDeny)
+		if !ok {
+			t.Errorf("expected %q to be a deny entry: rules on its node %v", d, keyRules(li, strings.TrimSuffix(d, "$")))
 			continue
 		}
-		if sugIdx < 0 || sugIdx >= len(li.suggestions) || li.suggestions[sugIdx] != sug {
-			t.Errorf("expected %q to suggest %q: suggestion index %d of %v", d, sug, sugIdx, li.suggestions)
+		if r.sug < 0 || int(r.sug) >= len(li.suggestions) || li.suggestions[r.sug] != sug {
+			t.Errorf("expected %q to suggest %q: suggestion index %d of %v", d, sug, r.sug, li.suggestions)
 		}
 	}
 }
@@ -423,6 +469,193 @@ func TestListCompile(t *testing.T) {
 func TestLinterSettingsCompile(t *testing.T) {
 	for _, s := range settingsCompileScenarios {
 		t.Run(s.name, testSettingsCompile(s))
+	}
+}
+
+type expanderFailTest struct{}
+
+func (*expanderFailTest) Expand() ([]string, error) {
+	return nil, errors.New("expected error")
+}
+
+type listCompileVariablesScenario struct {
+	name  string
+	list  func() *List      // fresh each run, map order changes between runs
+	rules []ruleSugExpected // in sorted order; keys are only comments
+}
+
+type ruleSugExpected struct {
+	kind   ruleKind
+	length int32
+	sug    string
+}
+
+var listCompileVariablesScenarios = []*listCompileVariablesScenario{
+	{
+		// $gostd expands to "FIND ME" and "FIND ME TOO" in these tests
+		name: "explicit deny keeps its suggestion",
+		list: func() *List {
+			return &List{Deny: map[string]string{"$gostd": "no std", "FIND ME": "explicit"}}
+		},
+		rules: []ruleSugExpected{
+			{kind: ruleDeny, length: 7, sug: "explicit"}, // FIND ME
+			{kind: ruleDeny, length: 11, sug: "no std"},  // FIND ME TOO
+		},
+	},
+	{
+		name: "explicit allow next to a variable is one rule",
+		list: func() *List {
+			return &List{Allow: []string{"FIND ME", "$gostd"}}
+		},
+		rules: []ruleSugExpected{
+			{kind: ruleAllow, length: 7},  // FIND ME
+			{kind: ruleAllow, length: 11}, // FIND ME TOO
+		},
+	},
+	{
+		name: "same entry in allow and deny is two rules",
+		list: func() *List {
+			return &List{Allow: []string{"$gostd"}, Deny: map[string]string{"FIND ME": "explicit"}}
+		},
+		rules: []ruleSugExpected{
+			{kind: ruleAllow, length: 7},                 // FIND ME
+			{kind: ruleDeny, length: 7, sug: "explicit"}, // FIND ME
+			{kind: ruleAllow, length: 11},                // FIND ME TOO
+		},
+	},
+}
+
+func testListCompileVariables(s *listCompileVariablesScenario) func(*testing.T) {
+	return func(t *testing.T) {
+		for i := range 50 {
+			li, err := s.list().compile()
+			if err != nil {
+				t.Fatalf("not expecting an error: %v", err)
+			}
+			act := make([]ruleSugExpected, 0, len(li.rules))
+			for _, r := range li.rules {
+				rs := ruleSugExpected{kind: r.kind, length: r.length}
+				if r.kind == ruleDeny {
+					rs.sug = li.suggestions[r.sug]
+				}
+				act = append(act, rs)
+			}
+			if diff := cmp.Diff(s.rules, act, cmp.AllowUnexported(ruleSugExpected{})); diff != "" {
+				t.Fatalf("compile %d: rules don't match\n%s", i, diff)
+			}
+		}
+	}
+}
+
+func TestListCompileVariables(t *testing.T) {
+	for _, s := range listCompileVariablesScenarios {
+		t.Run(s.name, testListCompileVariables(s))
+	}
+}
+
+// TestListCompileVariableErrors checks every variable that fails to expand is
+// reported, not just the first.
+func TestListCompileVariableErrors(t *testing.T) {
+	utils.PackageExpandable["$fail1"] = &expanderFailTest{}
+	utils.PackageExpandable["$fail2"] = &expanderFailTest{}
+	t.Cleanup(func() {
+		delete(utils.PackageExpandable, "$fail1")
+		delete(utils.PackageExpandable, "$fail2")
+	})
+	_, err := (&List{
+		Allow: []string{"$fail1", "os"},
+		Deny:  map[string]string{"$fail2": "nope"},
+	}).compile()
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, v := range []string{"$fail1", "$fail2"} {
+		if !strings.Contains(err.Error(), v) {
+			t.Errorf("error should name %s: %v", v, err)
+		}
+	}
+}
+
+// TestListCompileLeavesSettings checks compile only reads the List it's
+// given. NewUncompiledAnalyzer compiles once per package until Compile() is
+// called, and packages run in parallel on the same *List; run with -race.
+func TestListCompileLeavesSettings(t *testing.T) {
+	newList := func() *List {
+		return &List{
+			ListMode: "Strict",
+			Files:    []string{"$all", "!$test"},
+			Allow:    []string{"$gostd", "github.com/org/"},
+			Deny:     map[string]string{"$gostd": "no std", "FIND ME": "explicit", "github.com/org/legacy/": "use v2"},
+		}
+	}
+	l := newList()
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := l.compile(); err != nil {
+				t.Errorf("not expecting an error: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if diff := cmp.Diff(newList(), l); diff != "" {
+		t.Errorf("compile changed the List it was given\n%s", diff)
+	}
+}
+
+// TestListCompileRuleOrder checks the rules come out sorted by key, then allow
+// before deny, then prefix before exact. Each tree node owns a span of
+// rules with the same key, so this order must not depend on map iteration.
+// Compiled a few times, as one compile can get the right order by luck.
+//
+// Rules don't keep their key, so the key is only a comment here. Each deny
+// rule has its own suggestion and each allow rule a distinct length or
+// exactness next to its neighbours, so a wrong order still shows up.
+func TestListCompileRuleOrder(t *testing.T) {
+	type ruleSug struct {
+		kind   ruleKind
+		exact  bool
+		length int32
+		sug    string
+	}
+	exp := []ruleSug{
+		{kind: ruleAllow, length: 1},                             // a
+		{kind: ruleDeny, length: 1, sug: "a prefix"},             // a
+		{kind: ruleDeny, exact: true, length: 2, sug: "a exact"}, // a$
+		{kind: ruleAllow, exact: true, length: 4},                // a/b$
+		{kind: ruleDeny, length: 3, sug: "a/b prefix"},           // a/b
+		{kind: ruleAllow, length: 1},                             // b
+		{kind: ruleAllow, exact: true, length: 2},                // b$
+		{kind: ruleDeny, exact: true, length: 2, sug: "c exact"}, // c$
+	}
+	for i := range 20 {
+		li, err := (&List{
+			Allow: []string{"b$", "a/b$", "b", "a"},
+			Deny: map[string]string{
+				"c$":  "c exact",
+				"a$":  "a exact",
+				"a/b": "a/b prefix",
+				"a":   "a prefix",
+			},
+		}).compile()
+		if err != nil {
+			t.Fatalf("not expecting an error: %v", err)
+		}
+		act := make([]ruleSug, 0, len(li.rules))
+		for _, r := range li.rules {
+			rs := ruleSug{kind: r.kind, exact: r.exact, length: r.length}
+			if r.kind == ruleDeny {
+				rs.sug = li.suggestions[r.sug]
+			} else if r.sug != -1 {
+				t.Errorf("compile %d: allow rule has suggestion index %d", i, r.sug)
+			}
+			act = append(act, rs)
+		}
+		if diff := cmp.Diff(exp, act, cmp.AllowUnexported(ruleSug{})); diff != "" {
+			t.Fatalf("compile %d: rules not in the expected order\n%s", i, diff)
+		}
 	}
 }
 

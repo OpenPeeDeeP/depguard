@@ -8,47 +8,43 @@ import (
 	"testing"
 )
 
-type prefixTreeInsert struct {
-	str  string
-	deny bool
-	sug  int
-}
-
-func allowEntries(strs ...string) []prefixTreeInsert {
-	inserts := make([]prefixTreeInsert, 0, len(strs))
-	for _, str := range strs {
-		inserts = append(inserts, prefixTreeInsert{str: str})
-	}
-	return inserts
-}
-
-func denyEntry(str string, sug int) prefixTreeInsert {
-	return prefixTreeInsert{str: str, deny: true, sug: sug}
-}
-
-func buildPrefixTree(inserts []prefixTreeInsert) *CompressedPrefixTree {
+// buildPrefixTree inserts each key with the span [i, i+1), so a span reported
+// by a walk names the key it came from.
+func buildPrefixTree(keys ...string) *CompressedPrefixTree {
 	tree := NewCompressedPrefixTree()
-	for _, ins := range inserts {
-		if ins.deny {
-			tree.InsertDeny(ins.str, ins.sug)
-			continue
-		}
-		tree.InsertAllow(ins.str)
+	for i, key := range keys {
+		tree.Insert(key, uint32(i), uint32(i+1))
 	}
 	return tree
 }
 
-// Search walks the import once and returns the length of the longest matching
-// allow entry and deny entry (-1 for no match), plus the suggestion index of the
-// matching deny entry. Lengths count the $ of exact entries, so an exact entry
-// beats a prefix entry for the same string, like len(entry) does today.
-type prefixTreeSearchScenario struct {
-	name    string
-	inserts []prefixTreeInsert
-	search  string
-	allow   string // allow entry (as inserted) that should match, "" for none
-	deny    string // deny entry (as inserted) that should match, "" for none
-	sug     int    // suggestion index expected when deny is set
+// walkStep is one node with rules reported by a walk: the key inserted there
+// and whether the walked string ends at that node.
+type walkStep struct {
+	key   string
+	atEnd bool
+}
+
+func walkPrefixTree(t *testing.T, keys []string, str string) []walkStep {
+	t.Helper()
+	var steps []walkStep
+	buildPrefixTree(keys...).Walk(str, func(start, end uint32, atEnd bool) {
+		if end != start+1 || int(start) >= len(keys) {
+			t.Fatalf("walk reported span [%d, %d), which wasn't inserted", start, end)
+		}
+		steps = append(steps, walkStep{key: keys[start], atEnd: atEnd})
+	})
+	return steps
+}
+
+// A walk reports, from the root down, every inserted key that's a prefix of
+// the string, plus whether the string ends there. Exactness and match length
+// are the solver's job, not the tree's.
+type prefixTreeWalkScenario struct {
+	name     string
+	keys     []string
+	str      string
+	expected []walkStep
 }
 
 var (
@@ -58,160 +54,142 @@ var (
 		"github.com/org/legacy/auth/",
 		"github.com/org/v2",
 	}
-	nestedDeny = []prefixTreeInsert{
-		denyEntry("some/pkg/a", 0),
-		denyEntry("some/pkg/a/foo", 1),
-		denyEntry("some/pkg/b/", 2),
-		denyEntry("some/pkg/b/foo$", 3),
-	}
-	allowAndDeny = []prefixTreeInsert{{str: "some/pkg/a/foo"}, denyEntry("some/pkg/a", 0)}
-	exactTie     = []prefixTreeInsert{{str: "some/pkg/e$"}, denyEntry("some/pkg/e", 0)}
-	denyBothKind = []prefixTreeInsert{denyEntry("ab", 0), denyEntry("ab$", 1)}
-	dotEntries   = []prefixTreeInsert{{str: "path"}, {str: "go.opentelemetry.io"}}
+	stdBesideDomains = []string{"go/ast", "go/token", "go.opentelemetry.io", "golang.org/x"}
 
-	prefixTreeSearchScenarios = []*prefixTreeSearchScenario{
-		{name: "empty tree", inserts: nil, search: "abc"},
-		{name: "same as inserted", inserts: allowEntries("abc"), search: "abc", allow: "abc"},
-		{name: "shorter than inserted", inserts: allowEntries("abc"), search: "ab"},
-		{name: "longer than inserted", inserts: allowEntries("abc"), search: "abcd", allow: "abc"},
-		{name: "diverges from inserted", inserts: allowEntries("abc"), search: "abd"},
-		{name: "raw prefix", inserts: allowEntries("github.com/bob"), search: "github.com/bob2", allow: "github.com/bob"},
-		{name: "no shared first byte", inserts: allowEntries("abc", "xyz"), search: "xyz", allow: "xyz"},
-		{name: "split keeps original", inserts: allowEntries("abc", "abd"), search: "abc", allow: "abc"},
-		{name: "split adds new", inserts: allowEntries("abc", "abd"), search: "abd", allow: "abd"},
-		{name: "split node is not an entry", inserts: allowEntries("abc", "abd"), search: "ab"},
-		{name: "shorter inserted after longer", inserts: allowEntries("abc", "ab"), search: "ab", allow: "ab"},
-		{name: "longer kept after shorter inserted", inserts: allowEntries("abc", "ab"), search: "abc", allow: "abc"},
-		{name: "longer inserted after shorter", inserts: allowEntries("ab", "abc"), search: "abc", allow: "abc"},
-		{name: "duplicate insert", inserts: allowEntries("abc", "abc"), search: "abc", allow: "abc"},
-		{name: "insert ends at existing split node", inserts: allowEntries("abc", "abd", "ab"), search: "ab", allow: "ab"},
-		{name: "insert ends above split node", inserts: allowEntries("abc", "abd", "a"), search: "ab", allow: "a"},
-		{name: "longest prefix wins", inserts: allowEntries("ab", "abc"), search: "abcd", allow: "abc"},
-		{name: "prefix stops partway into child", inserts: allowEntries("ab", "abcd"), search: "abcx", allow: "ab"},
-		{name: "exact matches itself", inserts: allowEntries("abc$"), search: "abc", allow: "abc$"},
-		{name: "exact does not match longer", inserts: allowEntries("abc$"), search: "abcd"},
-		{name: "exact passed through to longer entry", inserts: allowEntries("ab$", "abc"), search: "abc", allow: "abc"},
-		{name: "exact passed through to longer prefix", inserts: allowEntries("ab$", "abc"), search: "abcd", allow: "abc"},
-		{name: "longer exact falls back to prefix", inserts: allowEntries("ab", "abc$"), search: "abcd", allow: "ab"},
-		{name: "exact inserted at split", inserts: allowEntries("abc", "ab$"), search: "abcd", allow: "abc"},
-		{name: "exact split keeps exactness", inserts: allowEntries("abc$", "abd"), search: "abcd"},
-		{name: "prefix and exact same entry longer", inserts: allowEntries("ab$", "ab"), search: "abc", allow: "ab"},
-		{name: "prefix and exact same entry exact wins", inserts: allowEntries("ab$", "ab"), search: "ab", allow: "ab$"},
-		{name: "radix words first", inserts: allowEntries(radixWords...), search: "romane", allow: "romane"},
-		{name: "radix words middle", inserts: allowEntries(radixWords...), search: "rubens", allow: "rubens"},
-		{name: "radix words last", inserts: allowEntries(radixWords...), search: "rubicundus", allow: "rubicundus"},
-		{name: "radix words shared prefix", inserts: allowEntries(radixWords...), search: "rom"},
-		{name: "radix words partial branch", inserts: allowEntries(radixWords...), search: "rubic"},
-		{name: "import path root", inserts: allowEntries(importPaths...), search: "github.com/org/legacy/", allow: "github.com/org/legacy/"},
-		{name: "import path nested", inserts: allowEntries(importPaths...), search: "github.com/org/legacy/auth/", allow: "github.com/org/legacy/auth/"},
-		{name: "import path sibling", inserts: allowEntries(importPaths...), search: "github.com/org/v2", allow: "github.com/org/v2"},
-		{name: "import path shared prefix", inserts: allowEntries(importPaths...), search: "github.com/org/"},
-		{name: "import path sibling sorted before nested", inserts: allowEntries(importPaths...), search: "github.com/org/legacy/api", allow: "github.com/org/legacy/"},
-		{name: "import path sibling sorted after nested", inserts: allowEntries(importPaths...), search: "github.com/org/legacy/db", allow: "github.com/org/legacy/"},
-		{name: "import path below nested", inserts: allowEntries(importPaths...), search: "github.com/org/legacy/auth/x", allow: "github.com/org/legacy/auth/"},
-		{name: "unrelated import", inserts: allowEntries(importPaths...), search: "zilld.io/pkg/e"},
-		{name: "relative import of root entry", inserts: allowEntries("os/exec", "path"), search: "./os/exec"},
-		{name: "absolute import of root entry", inserts: allowEntries("os/exec", "path"), search: "/os/exec"},
-		{name: "import path without trailing slash", inserts: allowEntries(importPaths...), search: "github.com/org/legacy"},
-		{name: "relative path entry", inserts: allowEntries("./relative/path"), search: "./relative/path/nested", allow: "./relative/path"},
-		{name: "absolute path entry", inserts: allowEntries("/absolute/path"), search: "/absolute/path/nested", allow: "/absolute/path"},
-		{name: "exact std entry beside domain", inserts: allowEntries("go/ast$", "go/token$", "go.opentelemetry.io", "golang.org/x"), search: "go/token", allow: "go/token$"},
-		{name: "exact std entry subpackage", inserts: allowEntries("go/ast$", "go/token$", "go.opentelemetry.io", "golang.org/x"), search: "go/token/fake"},
-		{name: "domain beside exact std entries", inserts: allowEntries("go/ast$", "go/token$", "go.opentelemetry.io", "golang.org/x"), search: "go.opentelemetry.io/otel", allow: "go.opentelemetry.io"},
-		{name: "import path nested exact", inserts: allowEntries("github.com/org/legacy/", "github.com/org/legacy/auth$"), search: "github.com/org/legacy/auth/x", allow: "github.com/org/legacy/"},
-		{name: "deny nested uses nested suggestion", inserts: nestedDeny, search: "some/pkg/a/foo/bar", deny: "some/pkg/a/foo", sug: 1},
-		{name: "deny sibling sorted before nested", inserts: nestedDeny, search: "some/pkg/a/bar", deny: "some/pkg/a", sug: 0},
-		{name: "deny sibling sorted after nested", inserts: nestedDeny, search: "some/pkg/a/zed", deny: "some/pkg/a", sug: 0},
-		{name: "deny nested exact uses exact suggestion", inserts: nestedDeny, search: "some/pkg/b/foo", deny: "some/pkg/b/foo$", sug: 3},
-		{name: "deny sibling sorted after nested exact", inserts: nestedDeny, search: "some/pkg/b/zed", deny: "some/pkg/b/", sug: 2},
-		{name: "deny below nested exact", inserts: nestedDeny, search: "some/pkg/b/foo/bar", deny: "some/pkg/b/", sug: 2},
-		{name: "allow and deny on different nodes", inserts: allowAndDeny, search: "some/pkg/a/foo/bar", allow: "some/pkg/a/foo", deny: "some/pkg/a", sug: 0},
-		{name: "allow and deny only deny matches", inserts: allowAndDeny, search: "some/pkg/a/baz", deny: "some/pkg/a", sug: 0},
-		{name: "exact allow and prefix deny same entry", inserts: exactTie, search: "some/pkg/e", allow: "some/pkg/e$", deny: "some/pkg/e", sug: 0},
-		{name: "exact allow and prefix deny subpackage", inserts: exactTie, search: "some/pkg/e/x", deny: "some/pkg/e", sug: 0},
-		{name: "deny prefix and exact same entry exact", inserts: denyBothKind, search: "ab", deny: "ab$", sug: 1},
-		{name: "deny prefix and exact same entry prefix", inserts: denyBothKind, search: "ab/x", deny: "ab", sug: 0},
-		{name: "root entry matches subpackage", inserts: dotEntries, search: "path/filepath", allow: "path"},
-		{name: "domain entry matches with dot", inserts: dotEntries, search: "go.opentelemetry.io/otel", allow: "go.opentelemetry.io"},
+	prefixTreeWalkScenarios = []*prefixTreeWalkScenario{
+		{name: "empty tree", keys: nil, str: "abc"},
+		{name: "empty string", keys: []string{"abc"}, str: ""},
+		{name: "same as inserted", keys: []string{"abc"}, str: "abc", expected: []walkStep{{"abc", true}}},
+		{name: "shorter than inserted", keys: []string{"abc"}, str: "ab"},
+		{name: "longer than inserted", keys: []string{"abc"}, str: "abcd", expected: []walkStep{{"abc", false}}},
+		{name: "diverges from inserted", keys: []string{"abc"}, str: "abd"},
+		{name: "raw prefix", keys: []string{"github.com/bob"}, str: "github.com/bob2", expected: []walkStep{{"github.com/bob", false}}},
+		{name: "no shared first byte", keys: []string{"abc", "xyz"}, str: "xyz", expected: []walkStep{{"xyz", true}}},
+		{name: "split keeps original", keys: []string{"abc", "abd"}, str: "abc", expected: []walkStep{{"abc", true}}},
+		{name: "split adds new", keys: []string{"abc", "abd"}, str: "abd", expected: []walkStep{{"abd", true}}},
+		{name: "split node has no rules", keys: []string{"abc", "abd"}, str: "ab"},
+		{name: "split node is skipped", keys: []string{"abc", "abd"}, str: "abcd", expected: []walkStep{{"abc", false}}},
+		{name: "shorter inserted after longer", keys: []string{"abc", "ab"}, str: "abc", expected: []walkStep{{"ab", false}, {"abc", true}}},
+		{name: "longer inserted after shorter", keys: []string{"ab", "abc"}, str: "abc", expected: []walkStep{{"ab", false}, {"abc", true}}},
+		{name: "insert ends at existing split node", keys: []string{"abc", "abd", "ab"}, str: "abd", expected: []walkStep{{"ab", false}, {"abd", true}}},
+		{name: "insert ends above split node", keys: []string{"abc", "abd", "a"}, str: "abc", expected: []walkStep{{"a", false}, {"abc", true}}},
+		{name: "every prefix on the path", keys: []string{"a", "ab", "abc"}, str: "abcd", expected: []walkStep{{"a", false}, {"ab", false}, {"abc", false}}},
+		{name: "stops partway into child", keys: []string{"ab", "abcd"}, str: "abcx", expected: []walkStep{{"ab", false}}},
+		{name: "string ends inside child", keys: []string{"ab", "abcd"}, str: "abc", expected: []walkStep{{"ab", false}}},
+		{name: "radix words first", keys: radixWords, str: "romane", expected: []walkStep{{"romane", true}}},
+		{name: "radix words middle", keys: radixWords, str: "rubens", expected: []walkStep{{"rubens", true}}},
+		{name: "radix words last", keys: radixWords, str: "rubicundus", expected: []walkStep{{"rubicundus", true}}},
+		{name: "radix words shared prefix", keys: radixWords, str: "rom"},
+		{name: "radix words partial branch", keys: radixWords, str: "rubic"},
+		{name: "import path nested", keys: importPaths, str: "github.com/org/legacy/auth/x", expected: []walkStep{{"github.com/org/legacy/", false}, {"github.com/org/legacy/auth/", false}}},
+		{name: "import path shared prefix", keys: importPaths, str: "github.com/org/"},
+		{name: "import path without trailing slash", keys: importPaths, str: "github.com/org/legacy"},
+		// The nested-entry bug (#115): siblings of a nested key, sorted either side of it
+		{name: "import path sibling sorted before nested", keys: importPaths, str: "github.com/org/legacy/api", expected: []walkStep{{"github.com/org/legacy/", false}}},
+		{name: "import path sibling sorted after nested", keys: importPaths, str: "github.com/org/legacy/db", expected: []walkStep{{"github.com/org/legacy/", false}}},
+		{name: "unrelated import", keys: importPaths, str: "zilld.io/pkg/e"},
+		{name: "relative import of root key", keys: []string{"os/exec", "path"}, str: "./os/exec"},
+		{name: "absolute import of root key", keys: []string{"os/exec", "path"}, str: "/os/exec"},
+		{name: "relative path key", keys: []string{"./relative/path"}, str: "./relative/path/nested", expected: []walkStep{{"./relative/path", false}}},
+		{name: "std beside domain", keys: stdBesideDomains, str: "go/token", expected: []walkStep{{"go/token", true}}},
+		{name: "domain beside std", keys: stdBesideDomains, str: "go.opentelemetry.io/otel", expected: []walkStep{{"go.opentelemetry.io", false}}},
+		{name: "root only", keys: []string{""}, str: "abc", expected: []walkStep{{"", false}}},
+		{name: "root with empty string", keys: []string{""}, str: "", expected: []walkStep{{"", true}}},
+		{name: "root then path", keys: []string{"ab", ""}, str: "abc", expected: []walkStep{{"", false}, {"ab", false}}},
+		{name: "root when nothing else matches", keys: []string{"ab", ""}, str: "xyz", expected: []walkStep{{"", false}}},
 	}
 )
 
-func expectedSearchLen(entry string) int {
-	if entry == "" {
-		return -1
-	}
-	return len(entry)
-}
-
-func testPrefixTreeSearch(s *prefixTreeSearchScenario) func(*testing.T) {
+func testPrefixTreeWalk(s *prefixTreeWalkScenario) func(*testing.T) {
 	return func(t *testing.T) {
-		allowLen, denyLen, sugIdx := buildPrefixTree(s.inserts).Search(s.search)
-		if exp := expectedSearchLen(s.allow); allowLen != exp {
-			t.Errorf("allow length: expected %d (%q) - got %d", exp, s.allow, allowLen)
-		}
-		if exp := expectedSearchLen(s.deny); denyLen != exp {
-			t.Errorf("deny length: expected %d (%q) - got %d", exp, s.deny, denyLen)
-		}
-		expSug := -1
-		if s.deny != "" {
-			expSug = s.sug
-		}
-		if sugIdx != expSug {
-			t.Errorf("suggestion index: expected %d - got %d", expSug, sugIdx)
+		act := walkPrefixTree(t, s.keys, s.str)
+		if !slices.Equal(act, s.expected) {
+			t.Errorf("walk of %q: expected %v - got %v", s.str, s.expected, act)
 		}
 	}
 }
 
-func TestPrefixTreeSearch(t *testing.T) {
-	for _, s := range prefixTreeSearchScenarios {
-		t.Run(s.name, testPrefixTreeSearch(s))
+func TestPrefixTreeWalk(t *testing.T) {
+	for _, s := range prefixTreeWalkScenarios {
+		t.Run(s.name, testPrefixTreeWalk(s))
+	}
+}
+
+// TestPrefixTreeWalkSpan checks spans wider than one rule come back as
+// inserted, and survive the node being split.
+func TestPrefixTreeWalkSpan(t *testing.T) {
+	tree := NewCompressedPrefixTree()
+	tree.Insert("abc", 0, 3)
+	tree.Insert("", 3, 4)
+	tree.Insert("ab", 4, 9) // splits "abc"
+	type span struct {
+		start, end uint32
+		atEnd      bool
+	}
+	var act []span
+	tree.Walk("abc", func(start, end uint32, atEnd bool) {
+		act = append(act, span{start, end, atEnd})
+	})
+	exp := []span{{3, 4, false}, {4, 9, false}, {0, 3, true}}
+	if !slices.Equal(act, exp) {
+		t.Errorf("expected spans %v - got %v", exp, act)
+	}
+}
+
+type prefixTreeInsertPanicScenario struct {
+	name string
+	keys []string
+}
+
+// compile inserts each key once, so a second insert is a bug that would
+// otherwise drop rules without a trace.
+var prefixTreeInsertPanicScenarios = []*prefixTreeInsertPanicScenario{
+	{name: "duplicate leaf", keys: []string{"abc", "abc"}},
+	{name: "duplicate after split", keys: []string{"abc", "abd", "abc"}},
+	{name: "duplicate split node", keys: []string{"abc", "abd", "ab", "ab"}},
+	{name: "duplicate shorter key", keys: []string{"ab", "abc", "ab"}},
+	{name: "duplicate root", keys: []string{"", "a", ""}},
+}
+
+func testPrefixTreeInsertPanic(s *prefixTreeInsertPanicScenario) func(*testing.T) {
+	return func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Errorf("expected inserting %q to panic", s.keys)
+			}
+		}()
+		buildPrefixTree(s.keys...)
+	}
+}
+
+func TestPrefixTreeInsertPanic(t *testing.T) {
+	for _, s := range prefixTreeInsertPanicScenarios {
+		t.Run(s.name, testPrefixTreeInsertPanic(s))
 	}
 }
 
 type prefixTreeStructureScenario struct {
 	name     string
-	inserts  []prefixTreeInsert
+	keys     []string
 	expected string
 }
 
 // Trees are written as {child,child}, where each child is its prefix, the
-// entries that end there in brackets, and its own children. Children are sorted
-// by their first byte. Entries are a* (allow prefix), a$ (allow exact),
-// d*:n (deny prefix with suggestion index n) and d$:n (deny exact with
-// suggestion index n).
+// index of the key inserted there in brackets, and its own children. Children
+// are sorted by their first byte. A key on the root shows before the braces.
 var prefixTreeStructureScenarios = []*prefixTreeStructureScenario{
-	{name: "empty", inserts: nil, expected: "{}"},
-	{name: "single", inserts: allowEntries("abc"), expected: "{abc[a*]}"},
-	{name: "no shared first byte", inserts: allowEntries("abc", "xyz"), expected: "{abc[a*],xyz[a*]}"},
-	{name: "duplicate insert", inserts: allowEntries("abc", "abc"), expected: "{abc[a*]}"},
-	{name: "split", inserts: allowEntries("abc", "abd"), expected: "{ab{c[a*],d[a*]}}"},
-	{name: "shorter after longer", inserts: allowEntries("abc", "ab"), expected: "{ab[a*]{c[a*]}}"},
-	{name: "longer after shorter", inserts: allowEntries("ab", "abc"), expected: "{ab[a*]{c[a*]}}"},
-	{name: "split keeps children", inserts: allowEntries("abcd", "abce", "ax"), expected: "{a{bc{d[a*],e[a*]},x[a*]}}"},
-	{name: "insert ends at existing split node", inserts: allowEntries("abc", "abd", "ab"), expected: "{ab[a*]{c[a*],d[a*]}}"},
-	{name: "insert ends above split node", inserts: allowEntries("abc", "abd", "a"), expected: "{a[a*]{b{c[a*],d[a*]}}}"},
-	{name: "radix words", inserts: allowEntries(radixWords...), expected: "{r{om{an{e[a*],us[a*]},ulus[a*]},ub{e{ns[a*],r[a*]},ic{on[a*],undus[a*]}}}}"},
-	{name: "exact single", inserts: allowEntries("abc$"), expected: "{abc[a$]}"},
-	{name: "exact split keeps exactness", inserts: allowEntries("abc$", "abd"), expected: "{ab{c[a$],d[a*]}}"},
-	{name: "exact inserted at split", inserts: allowEntries("abc", "ab$"), expected: "{ab[a$]{c[a*]}}"},
-	{name: "prefix inserted at exact split", inserts: allowEntries("abc$", "ab"), expected: "{ab[a*]{c[a$]}}"},
-	{name: "exact inserted at existing split node", inserts: allowEntries("abc", "abd", "ab$"), expected: "{ab[a$]{c[a*],d[a*]}}"},
-	{name: "exact then longer", inserts: allowEntries("ab$", "abc"), expected: "{ab[a$]{c[a*]}}"},
-	{name: "exact then prefix same entry", inserts: allowEntries("ab$", "ab"), expected: "{ab[a*,a$]}"},
-	{name: "prefix then exact same entry", inserts: allowEntries("ab", "ab$"), expected: "{ab[a*,a$]}"},
-	{name: "deny single", inserts: []prefixTreeInsert{denyEntry("abc", 0)}, expected: "{abc[d*:0]}"},
-	{name: "deny exact single", inserts: []prefixTreeInsert{denyEntry("abc$", 0)}, expected: "{abc[d$:0]}"},
-	{name: "deny split", inserts: []prefixTreeInsert{denyEntry("abc", 0), denyEntry("abd", 1)}, expected: "{ab{c[d*:0],d[d*:1]}}"},
-	{name: "deny at existing split node", inserts: []prefixTreeInsert{denyEntry("abc", 0), denyEntry("abd", 1), denyEntry("ab", 2)}, expected: "{ab[d*:2]{c[d*:0],d[d*:1]}}"},
-	{name: "deny then longer", inserts: []prefixTreeInsert{denyEntry("ab", 0), denyEntry("abc", 1)}, expected: "{ab[d*:0]{c[d*:1]}}"},
-	{name: "allow and deny same entry", inserts: []prefixTreeInsert{{str: "ab"}, denyEntry("ab", 0)}, expected: "{ab[a*,d*:0]}"},
-	{name: "deny and allow same entry", inserts: []prefixTreeInsert{denyEntry("ab", 0), {str: "ab"}}, expected: "{ab[a*,d*:0]}"},
-	{name: "allow root deny nested", inserts: []prefixTreeInsert{{str: "ab"}, denyEntry("abc", 0)}, expected: "{ab[a*]{c[d*:0]}}"},
-	{name: "deny nested allow root", inserts: []prefixTreeInsert{denyEntry("abc", 0), {str: "ab"}}, expected: "{ab[a*]{c[d*:0]}}"},
-	{name: "allow exact deny prefix same entry", inserts: []prefixTreeInsert{{str: "ab$"}, denyEntry("ab", 0)}, expected: "{ab[a$,d*:0]}"},
-	{name: "deny prefix and exact same entry", inserts: []prefixTreeInsert{denyEntry("ab", 0), denyEntry("ab$", 1)}, expected: "{ab[d*:0,d$:1]}"},
-	{name: "deny exact and prefix same entry", inserts: []prefixTreeInsert{denyEntry("ab$", 1), denyEntry("ab", 0)}, expected: "{ab[d*:0,d$:1]}"},
-	{name: "deny exact split keeps index", inserts: []prefixTreeInsert{denyEntry("abc$", 0), denyEntry("abd", 1)}, expected: "{ab{c[d$:0],d[d*:1]}}"},
+	{name: "empty", keys: nil, expected: "{}"},
+	{name: "single", keys: []string{"abc"}, expected: "{abc[0]}"},
+	{name: "no shared first byte", keys: []string{"abc", "xyz"}, expected: "{abc[0],xyz[1]}"},
+	{name: "split", keys: []string{"abc", "abd"}, expected: "{ab{c[0],d[1]}}"},
+	{name: "shorter after longer", keys: []string{"abc", "ab"}, expected: "{ab[1]{c[0]}}"},
+	{name: "longer after shorter", keys: []string{"ab", "abc"}, expected: "{ab[0]{c[1]}}"},
+	{name: "split keeps children", keys: []string{"abcd", "abce", "ax"}, expected: "{a{bc{d[0],e[1]},x[2]}}"},
+	{name: "insert ends at existing split node", keys: []string{"abc", "abd", "ab"}, expected: "{ab[2]{c[0],d[1]}}"},
+	{name: "insert ends above split node", keys: []string{"abc", "abd", "a"}, expected: "{a[2]{b{c[0],d[1]}}}"},
+	{name: "radix words", keys: radixWords, expected: "{r{om{an{e[0],us[1]},ulus[2]},ub{e{ns[3],r[4]},ic{on[5],undus[6]}}}}"},
+	{name: "root", keys: []string{""}, expected: "[0]{}"},
+	{name: "root and children", keys: []string{"ab", "", "ac"}, expected: "[1]{a{b[0],c[2]}}"},
 }
 
 func dumpPrefixTreeChildren(n *compressedPrefixTreeNode) string {
@@ -226,42 +204,32 @@ func dumpPrefixTreeChildren(n *compressedPrefixTreeNode) string {
 	return "{" + strings.Join(children, ",") + "}"
 }
 
+func dumpPrefixTreeSpan(n *compressedPrefixTreeNode) string {
+	if !n.spanSet() {
+		return ""
+	}
+	return fmt.Sprintf("[%d]", n.start)
+}
+
 func dumpPrefixTreeNode(n *compressedPrefixTreeNode) string {
-	var entries []string
-	if n.flags&allowPrefix != 0 {
-		entries = append(entries, "a*")
-	}
-	if n.flags&allowExact != 0 {
-		entries = append(entries, "a$")
-	}
-	if n.flags&denyPrefix != 0 {
-		entries = append(entries, fmt.Sprintf("d*:%d", n.prefixSugIdx))
-	}
-	if n.flags&denyExact != 0 {
-		entries = append(entries, fmt.Sprintf("d$:%d", n.exactSugIdx))
-	}
-	out := n.prefix
-	if len(entries) > 0 {
-		out += "[" + strings.Join(entries, ",") + "]"
-	}
+	out := n.prefix + dumpPrefixTreeSpan(n)
 	if len(n.children) > 0 {
 		out += dumpPrefixTreeChildren(n)
 	}
 	return out
 }
 
-// checkPrefixTreeNodes reports nodes whose suggestion indexes disagree with
-// their flags (a deny prefix entry has a prefix suggestion index, a deny exact
-// entry has an exact suggestion index, and every other index is -1), and nodes
-// with children that would hide each other (empty prefix or same first byte).
+func dumpPrefixTree(tree *CompressedPrefixTree) string {
+	return dumpPrefixTreeSpan(tree.root) + dumpPrefixTreeChildren(tree.root)
+}
+
+// checkPrefixTreeNodes reports nodes with a backwards span, and nodes with
+// children that would hide each other (empty prefix or same first byte).
 func checkPrefixTreeNodes(t *testing.T, path string, n *compressedPrefixTreeNode) {
 	t.Helper()
 	path += n.prefix
-	if (n.flags&denyPrefix != 0) != (n.prefixSugIdx != -1) {
-		t.Errorf("node %q: deny prefix is %v but prefix suggestion index is %d", path, n.flags&denyPrefix != 0, n.prefixSugIdx)
-	}
-	if (n.flags&denyExact != 0) != (n.exactSugIdx != -1) {
-		t.Errorf("node %q: deny exact is %v but exact suggestion index is %d", path, n.flags&denyExact != 0, n.exactSugIdx)
+	if n.start > n.end {
+		t.Errorf("node %q: span [%d, %d) is backwards", path, n.start, n.end)
 	}
 	firstBytes := make(map[byte]bool, len(n.children))
 	for _, child := range n.children {
@@ -279,8 +247,8 @@ func checkPrefixTreeNodes(t *testing.T, path string, n *compressedPrefixTreeNode
 
 func testPrefixTreeStructure(s *prefixTreeStructureScenario) func(*testing.T) {
 	return func(t *testing.T) {
-		tree := buildPrefixTree(s.inserts)
-		act := dumpPrefixTreeChildren(tree.root)
+		tree := buildPrefixTree(s.keys...)
+		act := dumpPrefixTree(tree)
 		if act != s.expected {
 			t.Errorf("tree structure differs: Exp %s, Act %s", s.expected, act)
 		}
@@ -294,12 +262,19 @@ func TestPrefixTreeStructure(t *testing.T) {
 	}
 }
 
+// TestPrefixTreeInsertOrder checks the shape doesn't depend on insert order.
+// Spans name keys by insert position, so they're left out of the comparison.
 func TestPrefixTreeInsertOrder(t *testing.T) {
+	shape := func(keys []string) string {
+		tree := NewCompressedPrefixTree()
+		for _, key := range keys {
+			tree.Insert(key, 1, 2)
+		}
+		return dumpPrefixTree(tree)
+	}
 	reversed := slices.Clone(radixWords)
 	slices.Reverse(reversed)
-	forward := dumpPrefixTreeChildren(buildPrefixTree(allowEntries(radixWords...)).root)
-	backward := dumpPrefixTreeChildren(buildPrefixTree(allowEntries(reversed...)).root)
-	if forward != backward {
+	if forward, backward := shape(radixWords), shape(reversed); forward != backward {
 		t.Errorf("tree depends on insert order: forward %s, reversed %s", forward, backward)
 	}
 }

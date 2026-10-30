@@ -1,8 +1,10 @@
 package depguard
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -25,6 +27,13 @@ const (
 	listModeLax
 )
 
+type originType uint8
+
+const (
+	originExplicit originType = iota
+	originVariable
+)
+
 type list struct {
 	listMode    listMode
 	name        string
@@ -33,6 +42,7 @@ type list struct {
 	tree        *utils.CompressedPrefixTree
 	suggestions []string
 	anyAllows   bool // only for backwards compatible original lists
+	rules       []rule
 }
 
 func (l *List) compile() (*list, error) {
@@ -41,7 +51,6 @@ func (l *List) compile() (*list, error) {
 	}
 	li := &list{}
 	var errs utils.MultiError
-	var err error
 
 	// Determine List Mode
 	switch strings.ToLower(l.ListMode) {
@@ -65,11 +74,15 @@ func (l *List) compile() (*list, error) {
 			f = f[1:]
 		}
 		// Expand File if needed
-		fs, err := utils.ExpandSlice([]string{f}, utils.PathExpandable)
+		entries, fromVar, err := utils.PathExpandable.Expand(f)
 		if err != nil {
 			errs = append(errs, err)
+			continue
 		}
-		for _, exp := range fs {
+		if !fromVar {
+			entries = []string{f}
+		}
+		for _, exp := range entries {
 			g, err := glob.Compile(exp, '/')
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s could not be compiled: %w", exp, err))
@@ -85,42 +98,92 @@ func (l *List) compile() (*list, error) {
 
 	li.tree = utils.NewCompressedPrefixTree()
 
-	if len(l.Allow) > 0 {
-		// Expand Allow
-		l.Allow, err = utils.ExpandSlice(l.Allow, utils.PackageExpandable)
+	type keyedRule struct {
+		key    string
+		origin originType
+		rule   rule
+	}
+
+	var parsed []keyedRule
+
+	// Parse the Allow list
+	for _, allow := range l.Allow {
+		entries, fromVar, err := utils.PackageExpandable.Expand(allow)
 		if err != nil {
 			errs = append(errs, err)
+			continue
 		}
-		for _, allow := range l.Allow {
-			if allow == "" {
-				errs = append(errs, errors.New("allow contains an empty package"))
+		origin := originExplicit
+		if !fromVar {
+			entries = []string{allow}
+		} else {
+			origin = originVariable
+		}
+		for _, e := range entries {
+			k, r, err := parseRule(e, ruleAllow)
+			if err != nil {
+				errs = append(errs, err)
 				continue
 			}
+			parsed = append(parsed, keyedRule{k, origin, r})
 			li.anyAllows = true
-			li.tree.InsertAllow(allow)
 		}
 	}
 
-	if l.Deny != nil {
-		// Expand Deny Map (to keep suggestions)
-		err = utils.ExpandMap(l.Deny, utils.PackageExpandable)
+	// Parse the Deny list
+	for deny, sug := range l.Deny {
+		sugIdx := int32(len(li.suggestions))
+		li.suggestions = append(li.suggestions, strings.TrimSpace(sug))
+		entries, fromVar, err := utils.PackageExpandable.Expand(deny)
 		if err != nil {
 			errs = append(errs, err)
+			continue
 		}
-
-		li.suggestions = make([]string, 0, len(l.Deny))
-		for deny, sug := range l.Deny {
-			if deny == "" {
-				errs = append(errs, errors.New("deny contains an empty package"))
+		origin := originExplicit
+		if !fromVar {
+			entries = []string{deny}
+		} else {
+			origin = originVariable
+		}
+		for _, e := range entries {
+			k, r, err := parseRule(e, ruleDeny)
+			if err != nil {
+				errs = append(errs, err)
 				continue
 			}
-			li.tree.InsertDeny(deny, len(li.suggestions))
-			li.suggestions = append(li.suggestions, strings.TrimSpace(sug))
+			r.sug = sugIdx
+			parsed = append(parsed, keyedRule{k, origin, r})
 		}
 	}
 
-	// Populate the type of this list
-	if !li.anyAllows && len(li.suggestions) == 0 {
+	// Need to sort so rules are contiguous
+	slices.SortFunc(parsed, func(left, right keyedRule) int {
+		return cmp.Or(
+			strings.Compare(left.key, right.key),
+			cmp.Compare(left.rule.kind, right.rule.kind),
+			cmp.Compare(left.rule.length, right.rule.length),
+			cmp.Compare(left.origin, right.origin),
+		)
+	})
+
+	// don't want duplicated rules (first wins)
+	// Sort above is important to ensure explicit suggestions are used rather than inherited ones
+	parsed = slices.CompactFunc(parsed, func(left, right keyedRule) bool {
+		return left.key == right.key && left.rule.kind == right.rule.kind && left.rule.length == right.rule.length
+	})
+
+	li.rules = make([]rule, len(parsed))
+	var start uint32 = 0
+	for i, p := range parsed {
+		li.rules[i] = p.rule
+		// Grouping logic used when a node may have more than 1 rule
+		if i+1 == len(parsed) || parsed[i+1].key != p.key {
+			li.tree.Insert(p.key, start, uint32(i+1))
+			start = uint32(i + 1)
+		}
+	}
+
+	if len(li.rules) == 0 {
 		errs = append(errs, errors.New("must have an Allow and/or Deny package list"))
 	}
 
@@ -137,7 +200,23 @@ func (l *list) fileMatch(fileName string) bool {
 }
 
 func (l *list) importAllowed(imp string) (bool, string) {
-	aLen, dLen, dSug := l.tree.Search(imp)
+	aLen, dLen, dSug := int32(-1), int32(-1), int32(-1)
+	l.tree.Walk(imp, func(start, end uint32, atEnd bool) {
+		for _, r := range l.rules[start:end] {
+			if r.exact && !atEnd {
+				continue
+			}
+			switch r.kind {
+			case ruleAllow:
+				aLen = max(aLen, r.length)
+			case ruleDeny:
+				if r.length > dLen {
+					dLen = r.length
+					dSug = r.sug
+				}
+			}
+		}
+	})
 	inAllowed := aLen != -1
 	inDenied := dLen != -1
 	var allowed bool
@@ -153,7 +232,7 @@ func (l *list) importAllowed(imp string) (bool, string) {
 		allowed = false
 	}
 	sugg := ""
-	if !allowed && inDenied && dSug != -1 {
+	if !allowed && inDenied {
 		sugg = l.suggestions[dSug]
 	}
 	return allowed, sugg
@@ -220,4 +299,48 @@ func strInGlobList(str string, globList []*glob.Pattern) bool {
 		}
 	}
 	return false
+}
+
+type ruleKind uint8
+
+func (rk ruleKind) String() string {
+	switch rk {
+	case ruleAllow:
+		return "allow"
+	case ruleDeny:
+		return "deny"
+	}
+	return ""
+}
+
+const (
+	ruleAllow ruleKind = iota
+	ruleDeny
+)
+
+type rule struct {
+	kind   ruleKind
+	exact  bool
+	length int32
+	sug    int32
+}
+
+func parseRule(str string, kind ruleKind) (string, rule, error) {
+	if str == "" {
+		return "", rule{}, fmt.Errorf("%s contains an empty package", kind)
+	}
+	s, isExact := strings.CutSuffix(str, "$")
+	l := len(s)
+	if isExact {
+		if l == 0 {
+			return "", rule{}, fmt.Errorf("%s contains a package with only $", kind)
+		}
+		l += 1
+	}
+	return s, rule{
+		kind:   kind,
+		exact:  isExact,
+		length: int32(l),
+		sug:    -1,
+	}, nil
 }

@@ -1,37 +1,25 @@
 package utils
 
-import (
-	"strings"
-)
-
 type CompressedPrefixTree struct {
 	root *compressedPrefixTreeNode
 }
 
 func NewCompressedPrefixTree() *CompressedPrefixTree {
 	return &CompressedPrefixTree{
-		root: newNode("", 0, -1),
+		root: &compressedPrefixTreeNode{},
 	}
 }
 
-func (cpt *CompressedPrefixTree) InsertAllow(str string) {
-	s, f := entryFlags(str, allowPrefix, allowExact)
-	cpt.insert(s, f, -1)
-}
-
-func (cpt *CompressedPrefixTree) InsertDeny(str string, sugIdx int) {
-	s, f := entryFlags(str, denyPrefix, denyExact)
-	cpt.insert(s, f, sugIdx)
-}
-
-func entryFlags(str string, prefix, exact nodeFlags) (string, nodeFlags) {
-	if s, ok := strings.CutSuffix(str, "$"); ok {
-		return s, exact
+func (cpt *CompressedPrefixTree) Insert(str string, start, end uint32) {
+	// this is the root
+	if len(str) == 0 {
+		if cpt.root.spanSet() {
+			panic("duplicate was inserted!")
+		}
+		cpt.root.start = start
+		cpt.root.end = end
+		return
 	}
-	return str, prefix
-}
-
-func (cpt *CompressedPrefixTree) insert(str string, flags nodeFlags, sugIdx int) {
 	node := cpt.root
 	i := 0
 	for i < len(str) {
@@ -39,7 +27,7 @@ func (cpt *CompressedPrefixTree) insert(str string, flags nodeFlags, sugIdx int)
 		child, exists := node.child(key)
 		// No child with key, create one
 		if !exists {
-			node.children = append(node.children, newNode(str[i:], flags, sugIdx))
+			node.children = append(node.children, &compressedPrefixTreeNode{prefix: str[i:], start: start, end: end})
 			break
 		}
 
@@ -59,95 +47,53 @@ func (cpt *CompressedPrefixTree) insert(str string, flags nodeFlags, sugIdx int)
 			newChild := *node
 			newChild.prefix = node.prefix[prefixLength:]
 			// Update existing node as nothing has gone here
-			*node = *newNode(node.prefix[:prefixLength], 0, -1)
-			node.children = append(node.children, &newChild)
+			*node = compressedPrefixTreeNode{
+				prefix:   node.prefix[:prefixLength],
+				children: []*compressedPrefixTreeNode{&newChild},
+			}
 		}
 
 		// This current string is matching this node update flags to current strings settings!
 		if i == len(str) {
-			updateNode(node, flags, sugIdx)
+			if node.spanSet() {
+				panic("duplicate was inserted!")
+			}
+			node.start = start
+			node.end = end
 		}
 	}
 }
 
-func (cpt *CompressedPrefixTree) Search(str string) (allowLen, denyLen, sugIdx int) {
+func (cpt *CompressedPrefixTree) Walk(str string, fn func(start, end uint32, atEnd bool)) {
 	node := cpt.root
-	i := 0
-	allowLen = -1
-	denyLen = -1
-	sugIdx = -1
-	for i < len(str) {
-		key := str[i]
-		child, exists := node.child(key)
-		// No child with key, no where to go so not found
-		if !exists {
+	if node.spanSet() {
+		fn(node.start, node.end, len(str) == 0)
+	}
+	for i := 0; i < len(str); {
+		child, ok := node.child(str[i])
+		if !ok {
+			// No children to go to we are done
 			return
 		}
 
-		// We found a child node, update variables
-		node = child
-		prefixLength := commonPrefixLength(str[i:], node.prefix)
+		prefixLength := commonPrefixLength(str[i:], child.prefix)
+		if prefixLength < len(child.prefix) {
+			// The child that was found differs from the str we are searching so we end.
+			return
+		}
 		i += prefixLength
-
-		// No possible match beyond this point
-		if prefixLength < len(node.prefix) {
-			return
-		}
-
-		if node.flags&allowPrefix != 0 {
-			allowLen = i
-		}
-		if node.flags&denyPrefix != 0 {
-			denyLen = i
-			sugIdx = node.prefixSugIdx
+		node = child
+		if node.spanSet() {
+			// This node has a span so we need to check it
+			fn(node.start, node.end, i == len(str))
 		}
 	}
-	if node.flags&allowExact != 0 {
-		allowLen = i + 1 // So that exactness is greater than prefix
-	}
-	if node.flags&denyExact != 0 {
-		denyLen = i + 1 // So that exactness is greater than prefix
-		sugIdx = node.exactSugIdx
-	}
-	return
 }
-
-type nodeFlags uint8
-
-const (
-	allowPrefix nodeFlags = 1 << iota
-	allowExact
-	denyPrefix
-	denyExact
-)
 
 type compressedPrefixTreeNode struct {
-	prefix       string
-	flags        nodeFlags
-	prefixSugIdx int
-	exactSugIdx  int
-	children     []*compressedPrefixTreeNode
-}
-
-func newNode(prefix string, flags nodeFlags, sugIdx int) *compressedPrefixTreeNode {
-	newNode := &compressedPrefixTreeNode{
-		prefix:       prefix,
-		flags:        0,
-		prefixSugIdx: -1,
-		exactSugIdx:  -1,
-	}
-	updateNode(newNode, flags, sugIdx)
-	return newNode
-}
-
-func updateNode(node *compressedPrefixTreeNode, flags nodeFlags, sugIdx int) {
-	node.flags |= flags
-	if flags&denyPrefix != 0 {
-		node.prefixSugIdx = sugIdx
-	}
-	if flags&denyExact != 0 {
-		node.exactSugIdx = sugIdx
-	}
+	prefix     string
+	start, end uint32
+	children   []*compressedPrefixTreeNode
 }
 
 func (cptn *compressedPrefixTreeNode) child(key byte) (*compressedPrefixTreeNode, bool) {
@@ -157,6 +103,10 @@ func (cptn *compressedPrefixTreeNode) child(key byte) (*compressedPrefixTreeNode
 		}
 	}
 	return nil, false
+}
+
+func (cptn *compressedPrefixTreeNode) spanSet() bool {
+	return cptn.start != cptn.end
 }
 
 func commonPrefixLength(a, b string) int {

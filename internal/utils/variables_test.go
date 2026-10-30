@@ -174,56 +174,6 @@ func TestIsStdPkg(t *testing.T) {
 	}
 }
 
-type insertSliceScenario struct {
-	name     string
-	first    []string
-	second   []string
-	idx      int
-	expected []string
-}
-
-var (
-	insertSliceScenarios = []*insertSliceScenario{
-		{
-			name:     "start",
-			first:    []string{"a", "b", "c", "d", "e"},
-			second:   []string{"f", "g", "h"},
-			idx:      0,
-			expected: []string{"f", "g", "h", "b", "c", "d", "e"},
-		},
-		{
-			name:     "middle",
-			first:    []string{"a", "b", "c", "d", "e"},
-			second:   []string{"f", "g", "h"},
-			idx:      2,
-			expected: []string{"a", "b", "f", "g", "h", "d", "e"},
-		},
-		{
-			name:     "end",
-			first:    []string{"a", "b", "c", "d", "e"},
-			second:   []string{"f", "g", "h"},
-			idx:      4,
-			expected: []string{"a", "b", "c", "d", "f", "g", "h"},
-		},
-	}
-)
-
-func testInsertSlice(s *insertSliceScenario) func(*testing.T) {
-	return func(t *testing.T) {
-		act := insertSlice(s.first, s.idx, s.second...)
-		diff := cmp.Diff(s.expected, act)
-		if diff != "" {
-			t.Errorf("actual slice differs from expected\n%s", diff)
-		}
-	}
-}
-
-func TestInsertSlice(t *testing.T) {
-	for _, s := range insertSliceScenarios {
-		t.Run(s.name, testInsertSlice(s))
-	}
-}
-
 type expanderTest struct{}
 
 func (*expanderTest) Expand() ([]string, error) {
@@ -243,65 +193,65 @@ var (
 	}
 )
 
-func TestExpandSlice(t *testing.T) {
-	t.Run("successful", func(t *testing.T) {
-		some := []string{"a", "$succ", "b"}
-		exp := []string{"a", "FIND ME", "FIND ME TOO", "b"}
-		act, err := ExpandSlice(some, expandables)
-		if err != nil {
-			t.Fatal("should not get an error")
-		}
-		diff := cmp.Diff(exp, act)
-		if diff != "" {
-			t.Errorf("slices don't match\n%s", diff)
-		}
-	})
-	t.Run("failure", func(t *testing.T) {
-		some := []string{"a", "$fail", "b"}
-		_, err := ExpandSlice(some, expandables)
-		if err == nil {
-			t.Fatal("expected an error")
-		}
-		if !strings.Contains(err.Error(), "$fail") {
-			t.Error("error string should contain the key that failed")
-		}
-	})
+type expanderMapExpandScenario struct {
+	name    string
+	entry   string
+	exp     []string
+	fromVar bool
+	expErr  string // substring the error must contain
 }
 
-func TestExpandMap(t *testing.T) {
-	t.Run("successful", func(t *testing.T) {
-		some := map[string]string{
-			"a":     "Use b",
-			"$succ": "Use stdlib",
-			"b":     "Use a",
+var expanderMapExpandScenarios = []*expanderMapExpandScenario{
+	{
+		name:    "variable",
+		entry:   "$succ",
+		exp:     []string{"FIND ME", "FIND ME TOO"},
+		fromVar: true,
+	},
+	{
+		name:  "plain entry",
+		entry: "github.com/org/",
+	},
+	{
+		name:  "unknown variable is a plain entry",
+		entry: "$nope",
+	},
+	{
+		name:  "variable must be the whole entry",
+		entry: "$succ/x",
+	},
+	{
+		name:    "failure names the variable",
+		entry:   "$fail",
+		fromVar: true,
+		expErr:  "$fail",
+	},
+}
+
+func testExpanderMapExpand(s *expanderMapExpandScenario) func(*testing.T) {
+	return func(t *testing.T) {
+		act, fromVar, err := expandables.Expand(s.entry)
+		if s.expErr != "" {
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), s.expErr) {
+				t.Errorf("error should contain %q: %v", s.expErr, err)
+			}
+		} else if err != nil {
+			t.Fatalf("not expecting an error: %v", err)
 		}
-		exp := map[string]string{
-			"a":           "Use b",
-			"FIND ME":     "Use stdlib",
-			"FIND ME TOO": "Use stdlib",
-			"b":           "Use a",
+		if fromVar != s.fromVar {
+			t.Errorf("fromVar: got %v, want %v", fromVar, s.fromVar)
 		}
-		err := ExpandMap(some, expandables)
-		if err != nil {
-			t.Fatal("should not get an error")
+		if diff := cmp.Diff(s.exp, act); diff != "" {
+			t.Errorf("expansion doesn't match\n%s", diff)
 		}
-		diff := cmp.Diff(exp, some)
-		if diff != "" {
-			t.Errorf("maps don't match\n%s", diff)
-		}
-	})
-	t.Run("failure", func(t *testing.T) {
-		some := map[string]string{
-			"a":     "Use b",
-			"$fail": "Use stdlib",
-			"b":     "Use a",
-		}
-		err := ExpandMap(some, expandables)
-		if err == nil {
-			t.Fatal("expected and error")
-		}
-		if !strings.Contains(err.Error(), "$fail") {
-			t.Error("error string should contain the key that failed")
-		}
-	})
+	}
+}
+
+func TestExpanderMapExpand(t *testing.T) {
+	for _, s := range expanderMapExpandScenarios {
+		t.Run(s.name, testExpanderMapExpand(s))
+	}
 }
