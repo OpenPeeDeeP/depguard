@@ -3,7 +3,7 @@ module github.com/OpenPeeDeeP/depguard/v2
 go 1.26.0
 
 require (
-	github.com/gobwas/glob v1.0.0
+	github.com/gobwas/glob v1.1.0
 	golang.org/x/tools v0.52.0
 )
 
